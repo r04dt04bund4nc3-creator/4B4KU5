@@ -1,4 +1,5 @@
-import React, { useCallback } from 'react';
+// src/pages/UploadPage.tsx
+import React, { useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { audioEngine } from '../audio/AudioEngine';
@@ -6,89 +7,81 @@ import { audioEngine } from '../audio/AudioEngine';
 export const UploadPage: React.FC = () => {
   const { setFile, setAudioBuffer, setRitualPhase } = useApp();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleFileUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
 
-    // 1. Store file in context
-    setFile(file);
+      // 1. Store file in global state
+      setFile(file);
 
-    // 2. Decode audio immediately so we are ready for the ritual
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      // Use the AudioEngine's context (it creates one if null)
-      await audioEngine.init();
-      const ctx = audioEngine.getAudioContext(); // Make sure we expose this in AudioEngine or use window.AudioContext
-      
-      // Fallback if engine context isn't ready (though init calls it)
-      const audioCtx = ctx || new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      
-      // 3. Store buffer in context
-      setAudioBuffer(audioBuffer);
-      
-      // 4. Update phase to 'ritual' (triggers the Green CRT Overlay)
-      setRitualPhase('ritual');
-      
-      // 5. Navigate to the instrument (Overlay will appear on top)
-      navigate('/sound-print');
-      
-    } catch (error) {
-      console.error("Error decoding audio:", error);
-      alert("Could not decode MP3. Please try another file.");
-    }
-  }, [setFile, setAudioBuffer, setRitualPhase, navigate]);
+      try {
+        // 2. Decode audio immediately
+        const arrayBuffer = await file.arrayBuffer();
+        await audioEngine.init();
+
+        const ctx = audioEngine.getAudioContext();
+        const AudioContextClass =
+          window.AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = ctx || new AudioContextClass();
+
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+        // 3. Store buffer in context
+        setAudioBuffer(audioBuffer);
+
+        // 4. Move ritual to "ritual" phase (launch screen)
+        setRitualPhase('ritual');
+
+        // 5. Navigate to instrument ritual interface
+        navigate('/instrument');
+      } catch (error) {
+        console.error('Error decoding audio:', error);
+        alert('Could not decode MP3. Please try another file.');
+      }
+    },
+    [setFile, setAudioBuffer, setRitualPhase, navigate]
+  );
+
+  const triggerFilePicker = () => {
+    fileInputRef.current?.click();
+  };
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      color: '#ffffff',
-      fontFamily: 'monospace',
-      textAlign: 'center',
-      zIndex: 1
-    }}>
-      <h1 style={{ 
-        fontSize: '2.5rem', 
-        marginBottom: '1rem',
-        textShadow: '0 0 10px rgba(74, 222, 128, 0.5)',
-        color: '#4ade80' 
-      }}>
-        4B4KU5
-      </h1>
-      
-      <p style={{ maxWidth: '400px', marginBottom: '2rem', lineHeight: '1.5' }}>
-        Initiate the genesis ritual. <br/>
-        Upload your audio artifact to begin.
-      </p>
+    <div
+      style={{
+        position: 'relative',
+        width: '100vw',
+        height: '100vh',
+        backgroundImage: "url('/ritual-bg-v2.jpg')",
+        backgroundSize: 'contain',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundColor: '#000',
+      }}
+    >
+      {/* Invisible upload hotspot mapped to "TAP HERE / TAP TO SELECT MP3" */}
+      <div
+        className="upload-hotspot"
+        onClick={triggerFilePicker}
+        aria-hidden="true"
+      />
 
-      <label style={{
-        padding: '1rem 2rem',
-        background: 'linear-gradient(90deg, #4ade80, #f87171)',
-        color: '#000',
-        fontWeight: 'bold',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        boxShadow: '0 0 15px rgba(74, 222, 128, 0.3)',
-        transition: 'transform 0.2s'
-      }}>
-        SELECT AUDIO ARTIFACT
-        <input 
-          type="file" 
-          accept="audio/*" 
-          onChange={handleFileUpload} 
-          style={{ display: 'none' }} 
-        />
-      </label>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+      />
 
-      <div style={{ marginTop: '2rem', fontSize: '0.8rem', color: '#666' }}>
-        Supported Formats: MP3, WAV
-      </div>
+      {/* Accessible trigger for screen readers */}
+      <button onClick={triggerFilePicker} className="sr-only">
+        Upload audio to begin ritual
+      </button>
     </div>
   );
 };

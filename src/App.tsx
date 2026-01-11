@@ -1,35 +1,41 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+// src/App.tsx
+import { Routes, Route } from 'react-router-dom';
+import { AppProvider } from './state/AppContext';
+
+import { Shell } from './components/layout/Shell';
+import { UploadPage } from './pages/UploadPage';
+import InstrumentPage from './pages/InstrumentPage';
+// import ResultPage from './pages/ResultPage'; // when ready
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <AppProvider>
+      <Routes>
+        {/* Step 1 – Upload page with invisible hotspot */}
+        <Route
+          path="/"
+          element={
+            <Shell>
+              <UploadPage />
+            </Shell>
+          }
+        />
+
+        {/* Step 3 – Instrument / Ritual */}
+        <Route
+          path="/instrument"
+          element={
+            <Shell>
+              <InstrumentPage />
+            </Shell>
+          }
+        />
+
+        {/* Future: captured result, auth, Stripe, wagmi, etc. */}
+        {/* <Route path="/result" element={<ResultPage />} /> */}
+      </Routes>
+    </AppProvider>
+  );
 }
 
-export default App
+export default App;

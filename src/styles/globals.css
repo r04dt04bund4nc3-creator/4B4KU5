@@ -1,16 +1,17 @@
+/* src/styles/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   background-color: #050810;
-    color-scheme: dark;
-    }
+  color-scheme: dark;
+}
 
-    body {
-      margin: 0;
-        background-color: #050810;
-          color: white;
-            font-family: 'Courier New', Courier, monospace;
-              overflow-x: hidden;
-              }
+body {
+  margin: 0;
+  background-color: #050810;
+  color: white;
+  font-family: 'Courier New', Courier, monospace;
+  overflow-x: hidden;
+}
