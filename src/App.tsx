@@ -1,17 +1,23 @@
-// src/App.tsx
+import { useEffect } from 'react'; // Added useEffect
 import { Routes, Route } from 'react-router-dom';
 import { AppProvider } from './state/AppContext';
+import { useAnalytics } from './hooks/useAnalytics'; // Added Hook
 
 import { Shell } from './components/layout/Shell';
 import { UploadPage } from './pages/UploadPage';
 import InstrumentPage from './pages/InstrumentPage';
-// import ResultPage from './pages/ResultPage'; // when ready
 
 function App() {
+  const { trackEvent } = useAnalytics();
+
+  useEffect(() => {
+    // Track initial landing
+    trackEvent('visit', { path: window.location.pathname });
+  }, []);
+
   return (
     <AppProvider>
       <Routes>
-        {/* Step 1 – Upload page with invisible hotspot */}
         <Route
           path="/"
           element={
@@ -20,8 +26,6 @@ function App() {
             </Shell>
           }
         />
-
-        {/* Step 3 – Instrument / Ritual */}
         <Route
           path="/instrument"
           element={
@@ -30,9 +34,6 @@ function App() {
             </Shell>
           }
         />
-
-        {/* Future: captured result, auth, Stripe, wagmi, etc. */}
-        {/* <Route path="/result" element={<ResultPage />} /> */}
       </Routes>
     </AppProvider>
   );
