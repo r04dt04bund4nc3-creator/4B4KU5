@@ -1,7 +1,7 @@
 import React, { useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
-import { audioEngine } from '../audio/AudioEngine'; // Named import
+import { audioEngine } from '../audio/AudioEngine';
 import { useAnalytics } from '../hooks/useAnalytics';
 
 export const UploadPage: React.FC = () => {
@@ -19,43 +19,32 @@ export const UploadPage: React.FC = () => {
 
       try {
         const arrayBuffer = await file.arrayBuffer();
-
         await audioEngine.init();
         const ctx = audioEngine.getAudioContext();
-
-        const AudioContextClass =
-          window.AudioContext || (window as any).webkitAudioContext;
+        
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         const audioCtx = ctx || new AudioContextClass();
-
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-        // Analytics
         trackEvent('upload_success', {
           duration: audioBuffer.duration,
-          fileName: file.name,
-          fileType: file.type,
+          fileName: file.name
         });
 
         setAudioBuffer(audioBuffer);
         setRitualPhase('ritual');
         navigate('/instrument');
       } catch (error) {
-        console.error('Error decoding audio:', error);
-        trackEvent('upload_error', { error: 'decode_failed' });
-        alert('Could not decode MP3. Please try another file.');
+        console.error('Error:', error);
+        alert('Could not decode audio. Try another file.');
       }
     },
     [setFile, setAudioBuffer, setRitualPhase, navigate, trackEvent]
   );
 
-  const triggerFilePicker = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
     <div
       style={{
-        position: 'relative',
         width: '100vw',
         height: '100vh',
         backgroundImage: "url('/ritual-bg-v2.jpg')",
@@ -63,16 +52,15 @@ export const UploadPage: React.FC = () => {
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
         backgroundColor: '#000',
+        position: 'relative'
       }}
     >
-      {/* Invisible hotspot over the central ritual button */}
+      {/* This is the invisible circle over the center graphic */}
       <div
         className="upload-hotspot"
-        onClick={triggerFilePicker}
-        aria-hidden="true"
+        onClick={() => fileInputRef.current?.click()}
       />
 
-      {/* Actual file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -80,11 +68,6 @@ export const UploadPage: React.FC = () => {
         onChange={handleFileUpload}
         style={{ display: 'none' }}
       />
-
-      {/* Screen-reader-only button so the upload is still keyboard/AT accessible */}
-      <button type="button" onClick={triggerFilePicker} className="sr-only">
-        Upload audio to begin ritual
-      </button>
     </div>
   );
 };
