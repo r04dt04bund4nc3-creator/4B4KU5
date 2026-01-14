@@ -1,10 +1,9 @@
-// src/pages/UploadPage.tsx
 import React, { useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 
-// @ts-ignore: Bypassing module resolution error since file exists
-import { audioEngine } from '../audio/AudioEngine';
+// FIX: Added '.ts' extension so Vite can find the file
+import { audioEngine } from '../audio/AudioEngine.ts'; 
 import { useAnalytics } from '../hooks/useAnalytics';
 
 export const UploadPage: React.FC = () => {
