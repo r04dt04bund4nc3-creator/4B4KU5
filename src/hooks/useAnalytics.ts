@@ -9,27 +9,35 @@ export const useAnalytics = () => {
     return id;
   };
 
-  const trackEvent = (event: string, metadata: object = {}) => {
-    // Your specific Webhook URL from the screenshot
+  const trackEvent = async (event: string, metadata: object = {}) => {
+    // Exact URL from your screenshot
     const ENDPOINT = 'https://webhook.site/52fd93c2-d87a-4ced-a7e4-261e6b04f699';
     
-    const payload = JSON.stringify({
+    const payload = {
       sessionId: getSessionId(),
       event,
       timestamp: new Date().toISOString(),
       ...metadata,
-    });
+    };
 
-    // Use sendBeacon for background reliability, fallback to fetch
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(ENDPOINT, payload);
-    } else {
-      fetch(ENDPOINT, {
+    console.log(`📊 Tracking Event: ${event}`, payload);
+
+    try {
+      // Use standard fetch for reliability in dev/Codespaces
+      const response = await fetch(ENDPOINT, {
         method: 'POST',
-        mode: 'no-cors', 
-        headers: { 'Content-Type': 'text/plain' },
-        body: payload
-      }).catch(() => {});
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      // We log to console so you can see if it fails in the browser inspector
+      console.warn('❌ Tracking failed:', error);
     }
   };
 
