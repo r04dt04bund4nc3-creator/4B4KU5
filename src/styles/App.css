@@ -1,44 +1,21 @@
 /* src/styles/App.css */
 
-/* Reset */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* ... your other styles ... */
 
-body, html, #root {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: #000;
-}
-
-/* THE INVISIBLE TARGET */
-/* This creates a large clickable circle right over the music note in your image */
 .upload-hotspot {
   position: absolute;
+  /* Position it at the bottom center */
+  bottom: 8vh;   /* Adjust this value to move it up/down */
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 250px;  /* Size of the central golden music note area */
-  height: 250px;
-  border-radius: 50%;
-  cursor: pointer;
-  z-index: 999;
-  /* Temporary: Uncomment the line below if you want to see the box while testing */
-  /* border: 2px solid red; */
-}
+  transform: translateX(-50%);
 
-/* HIDE THE TEXT */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  /* Size it to cover the "TAP HERE" text */
+  width: 200px;  /* Adjust width as needed */
+  height: 50px;  /* Adjust height as needed */
+
+  /* For debugging: uncomment to see the clickable area */
+  /* border: 2px dashed red; */
+  
+  cursor: pointer;
+  z-index: 10; /* Make sure it's clickable */
 }

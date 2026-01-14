@@ -1,7 +1,8 @@
+// src/pages/UploadPage.tsx
 import React, { useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
-import { audioEngine } from '../audio/AudioEngine';
+import { audioEngine } from '../audio/AudioEngine'; // CORRECT: Named import with curly braces
 import { useAnalytics } from '../hooks/useAnalytics';
 
 export const UploadPage: React.FC = () => {
@@ -24,27 +25,35 @@ export const UploadPage: React.FC = () => {
         
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         const audioCtx = ctx || new AudioContextClass();
+
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
         trackEvent('upload_success', {
           duration: audioBuffer.duration,
-          fileName: file.name
+          fileName: file.name,
+          fileType: file.type,
         });
 
         setAudioBuffer(audioBuffer);
         setRitualPhase('ritual');
         navigate('/instrument');
       } catch (error) {
-        console.error('Error:', error);
-        alert('Could not decode audio. Try another file.');
+        console.error('Error decoding audio:', error);
+        trackEvent('upload_error', { error: 'decode_failed' });
+        alert('Could not decode MP3. Please try another file.');
       }
     },
     [setFile, setAudioBuffer, setRitualPhase, navigate, trackEvent]
   );
 
+  const triggerFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div
       style={{
+        position: 'relative',
         width: '100vw',
         height: '100vh',
         backgroundImage: "url('/ritual-bg-v2.jpg')",
@@ -52,15 +61,16 @@ export const UploadPage: React.FC = () => {
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
         backgroundColor: '#000',
-        position: 'relative'
       }}
     >
-      {/* This is the invisible circle over the center graphic */}
+      {/* This is the invisible click target */}
       <div
         className="upload-hotspot"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={triggerFilePicker}
+        aria-hidden="true"
       />
 
+      {/* The actual file input, hidden from view */}
       <input
         ref={fileInputRef}
         type="file"
