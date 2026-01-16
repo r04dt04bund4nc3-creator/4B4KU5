@@ -10,8 +10,8 @@
   transform: translateX(-50%);
 
   /* Size it to cover the "TAP HERE" text */
-  width: 200px;  /* Adjust width as needed */
-  height: 50px;  /* Adjust height as needed */
+  width: 600px;  /* Adjust width as needed */
+  height: 300px;  /* Adjust height as needed */
 
   /* For debugging: uncomment to see the clickable area */
   /* border: 2px dashed red; */
