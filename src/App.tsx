@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect } from 'react'; // Added useEffect
 import { Routes, Route } from 'react-router-dom';
 import { AppProvider } from './state/AppContext';
@@ -6,6 +7,7 @@ import { useAnalytics } from './hooks/useAnalytics'; // Added Hook
 import { Shell } from './components/layout/Shell';
 import { UploadPage } from './pages/UploadPage';
 import InstrumentPage from './pages/InstrumentPage';
+import ResultPage from './pages/ResultPage'; // NEW
 
 function App() {
   const { trackEvent } = useAnalytics();
@@ -31,6 +33,14 @@ function App() {
           element={
             <Shell>
               <InstrumentPage />
+            </Shell>
+          }
+        />
+        <Route
+          path="/result"
+          element={
+            <Shell>
+              <ResultPage />
             </Shell>
           }
         />

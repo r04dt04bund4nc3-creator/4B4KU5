@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+// src/state/AppContext.tsx
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 interface AudioState {
   file: File | null;
@@ -16,12 +18,20 @@ interface RitualState {
   countdown: number;
   soundPrintDataUrl: string | null;
   finalEQState: number[]; // Stores the visual pattern from the instrument
+  isRecording: boolean;
+}
+
+interface AuthState {
+  user: any | null;
+  isLoading: boolean;
+  error: string | null;
 }
 
 interface AppContextType {
   audio: AudioState;
   state: AudioState; // Alias for easier access
   ritual: RitualState;
+  auth: AuthState;
   setFile: (file: File) => void;
   setAudioFile: (file: File) => void;
   setAudioBuffer: (buffer: AudioBuffer) => void;
@@ -31,9 +41,11 @@ interface AppContextType {
   setCountdown: (count: number) => void;
   setSoundPrint: (data: any) => void; 
   captureSoundPrint: (dataUrl: string) => void;
-  // This is the function causing the error - now updated to accept 2 arguments
   saveRecording: (blob: Blob, finalEQ: number[]) => void;
   reset: () => void;
+  signInWithDiscord: () => Promise<void>;
+  signOut: () => Promise<void>;
+  savePerformance: (gestureData: any, trackName: string, trackHash: string) => Promise<void>;
 }
 
 const initialAudioState: AudioState = {
@@ -51,6 +63,13 @@ const initialRitualState: RitualState = {
   countdown: 36,
   soundPrintDataUrl: null,
   finalEQState: [],
+  isRecording: false,
+};
+
+const initialAuthState: AuthState = {
+  user: null,
+  isLoading: true,
+  error: null,
 };
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -58,6 +77,25 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [audio, setAudio] = useState<AudioState>(initialAudioState);
   const [ritual, setRitual] = useState<RitualState>(initialRitualState);
+  const [auth, setAuth] = useState<AuthState>(initialAuthState);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        setAuth(prev => ({ ...prev, user: session?.user, isLoading: false }));
+      } else if (event === 'SIGNED_OUT') {
+        setAuth(prev => ({ ...prev, user: null, isLoading: false }));
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuth(prev => ({ ...prev, user: session?.user, isLoading: false }));
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const setFile = useCallback((file: File) => {
     setAudio(prev => ({ ...prev, file, isProcessing: true }));
@@ -105,7 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // FIX: Updated to accept both the audio blob AND the visual EQ state
   const saveRecording = useCallback((blob: Blob, finalEQ: number[]) => {
     setAudio(prev => ({ ...prev, recordingBlob: blob }));
-    setRitual(prev => ({ ...prev, finalEQState: finalEQ, phase: 'capture' }));
+    setRitual(prev => ({ ...prev, finalEQState: finalEQ, phase: 'capture', isRecording: false }));
   }, []);
 
   const reset = useCallback(() => {
@@ -113,11 +151,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRitual(initialRitualState);
   }, []);
 
+  const signInWithDiscord = useCallback(async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'discord',
+        options: {
+          redirectTo: import.meta.env.PROD 
+            ? 'https://g4m3.netlify.app/auth/callback'
+            : 'http://localhost:5173/auth/callback'
+        }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error('Sign out error:', error);
+  }, []);
+
+  const savePerformance = useCallback(async (gestureData: any, trackName: string, trackHash: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('performances')
+      .insert({
+        user_id: user.id,
+        track_name: trackName,
+        track_hash: trackHash,
+        gesture_data: gestureData,
+        thumbnail_data_url: ritual.soundPrintDataUrl || null
+      });
+
+    if (error) {
+      console.error('Error saving performance:', error);
+    }
+  }, [ritual.soundPrintDataUrl]);
+
   return (
     <AppContext.Provider value={{
       audio,
       state: audio,
       ritual,
+      auth,
       setFile,
       setAudioFile,
       setAudioBuffer,
@@ -129,6 +208,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       captureSoundPrint,
       saveRecording,
       reset,
+      signInWithDiscord,
+      signOut,
+      savePerformance,
     }}>
       {children}
     </AppContext.Provider>

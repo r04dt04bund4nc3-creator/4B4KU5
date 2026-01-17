@@ -76,7 +76,7 @@ export class AudioEngine {
         this.mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) this.recordedChunks.push(e.data);
         };
-        this.mediaRecorder.start(100);
+        this.mediaRecorder.start(100); // Record every 100ms
     } catch (e) {
         console.warn('MediaRecorder failed', e);
     }
