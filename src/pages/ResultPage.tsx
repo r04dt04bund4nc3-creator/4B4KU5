@@ -3,7 +3,7 @@ import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
-import { AuthForm } from '../components/AuthForm'; // Import the AuthForm
+import { AuthForm } from '../components/ui/AuthForm'; // Import the AuthForm
 
 const ResultPage: React.FC = () => {
   const navigate = useNavigate();
@@ -11,12 +11,19 @@ const ResultPage: React.FC = () => {
   const { trackEvent } = useAnalytics();
 
   const downloadAudio = useCallback(() => {
-    if (!state.recordingBlob) return;
+    // Double guard to absolutely block unauthenticated downloads
+    if (!auth.user || !state.recordingBlob) {
+      if (!auth.user) {
+        alert("Please sign in to download your performance.");
+        trackEvent('download_attempt_unauthenticated');
+      }
+      return;
+    }
 
     const url = URL.createObjectURL(state.recordingBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${state.file?.name.replace(/\.[^/.]+$/, "") || 'performance'}-sound-print.webm`;
+    a.download = `\){state.file?.name.replace(/\.[^/.]+$/, "") || 'performance'}-sound-print.webm`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -26,7 +33,7 @@ const ResultPage: React.FC = () => {
       fileName: state.file?.name,
       fileSize: state.recordingBlob.size,
     });
-  }, [state.recordingBlob, state.file, trackEvent]);
+  }, [state.recordingBlob, state.file, trackEvent, auth.user]);
 
   const replayRitual = useCallback(() => {
     reset();
@@ -77,6 +84,9 @@ const ResultPage: React.FC = () => {
               borderRadius: '8px',
               boxShadow: '0 0 20px rgba(0, 255, 102, 0.2)'
             }}
+            onError={() => {
+              console.error("Failed to load Sound Print");
+            }}
           />
         ) : (
           <div style={{
@@ -84,19 +94,22 @@ const ResultPage: React.FC = () => {
             height: '200px',
             border: '1px dashed #333',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#ccc'
+            color: '#ccc',
+            gap: '8px'
           }}>
-            Capturing Visual...
+            <span>SOUND PRINT NOT CAPTURED</span>
+            <small style={{ fontSize: '0.7rem' }}>This may have occurred during the performance ritual</small>
           </div>
         )}
       </div>
 
       {auth.isLoading ? (
         <p style={{ color: '#fff' }}>Loading session...</p>
-      ) : auth.user ? (
-        // LOGGED-IN VIEW
+      ) : auth.user?.id ? (
+        // LOGGED-IN VIEW - only show if we have a valid user ID
         <>
           <p style={{ marginBottom: '1rem', color: '#fff' }}>Signed in as {auth.user.email}</p>
           <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>

@@ -85,12 +85,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false }));
+      setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false, error: null }));
     });
 
     // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false }));
+      setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false, error: null }));
     });
 
     return () => {
@@ -154,13 +154,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // --- Auth Functions ---
 
   const getRedirectUrl = () => {
+    // Dynamically detect the current URL to work perfectly in Codespaces, local dev, and production
+    if (typeof window !== 'undefined') {
+      return `\({window.location.origin}/auth/callback`;
+    }
+    // Fallback for edge cases
     return import.meta.env.PROD
       ? 'https://g4m3.netlify.app/auth/callback' 
-      : 'http://localhost:5173/auth/callback'; // Make sure this matches your dev URL
+      : 'http://localhost:5173/auth/callback';
   };
 
   const signInWithDiscord = useCallback(async () => {
     try {
+      setAuth(prev => ({ ...prev, error: null }));
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
         options: { redirectTo: getRedirectUrl() }
@@ -173,6 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     try {
+      setAuth(prev => ({ ...prev, error: null }));
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: getRedirectUrl() }
@@ -184,6 +191,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setAuth(prev => ({ ...prev, error: null }));
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
         setAuth(prev => ({ ...prev, error: error.message }));

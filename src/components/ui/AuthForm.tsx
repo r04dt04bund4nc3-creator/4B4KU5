@@ -1,6 +1,6 @@
-// src/components/AuthForm.tsx
+// src/components/ui/AuthForm.tsx
 import React, { useState } from 'react';
-import { useApp } from '../state/AppContext';
+import { supabase } from '../../lib/supabaseClient'; // Adjusted path to lib
 
 const buttonBaseStyle: React.CSSProperties = {
   width: '100%',
@@ -18,21 +18,65 @@ const buttonBaseStyle: React.CSSProperties = {
 };
 
 export const AuthForm: React.FC = () => {
-  const { signInWithGoogle, signInWithDiscord, signInWithEmail } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  // Dynamic redirect ensures this works on Codespaces AND Localhost
+  const getRedirectUrl = () => {
+    return window.location.origin; 
+  };
+
+  const handleSocialLogin = async (provider: 'google' | 'discord') => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: getRedirectUrl(),
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     setError('');
     setMessage('');
-    const { error } = await signInWithEmail(email, password);
-    if (error) {
-      setError(error.message);
-    } else {
-      setMessage('Check your email for the login link!');
+    
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        // If password login fails, try magic link
+        const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: getRedirectUrl(),
+          }
+        });
+        
+        if (magicLinkError) throw magicLinkError;
+        setMessage('Check your email for the login link!');
+      } else {
+        // Success (handled by session listener in App)
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -46,10 +90,18 @@ export const AuthForm: React.FC = () => {
       <h3 style={{ marginBottom: '20px', color: '#fff' }}>SIGN IN TO DOWNLOAD & SAVE</h3>
 
       {/* Social Logins */}
-      <button style={{ ...buttonBaseStyle, backgroundColor: '#4285F4', color: 'white' }} onClick={signInWithGoogle}>
+      <button 
+        style={{ ...buttonBaseStyle, backgroundColor: '#4285F4', color: 'white', opacity: loading ? 0.7 : 1 }} 
+        onClick={() => handleSocialLogin('google')}
+        disabled={loading}
+      >
         Sign in with Google
       </button>
-      <button style={{ ...buttonBaseStyle, backgroundColor: '#5865F2', color: 'white' }} onClick={signInWithDiscord}>
+      <button 
+        style={{ ...buttonBaseStyle, backgroundColor: '#5865F2', color: 'white', opacity: loading ? 0.7 : 1 }} 
+        onClick={() => handleSocialLogin('discord')}
+        disabled={loading}
+      >
         Sign in with Discord
       </button>
 
@@ -78,8 +130,12 @@ export const AuthForm: React.FC = () => {
           required
           style={{ width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
         />
-        <button type="submit" style={{ ...buttonBaseStyle, backgroundColor: '#00ff66', color: '#000' }}>
-          Sign In with Email
+        <button 
+          type="submit" 
+          disabled={loading}
+          style={{ ...buttonBaseStyle, backgroundColor: '#00ff66', color: '#000', opacity: loading ? 0.7 : 1 }}
+        >
+          {loading ? 'Processing...' : 'Sign In with Email'}
         </button>
       </form>
       {error && <p style={{ color: '#ff4d4d', fontSize: '0.8rem', marginTop: '10px' }}>{error}</p>}
