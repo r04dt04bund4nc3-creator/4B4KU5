@@ -5,36 +5,40 @@ import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { AuthForm } from '../components/ui/AuthForm';
 
+// Import the background skins and the new CSS file
+import loggedOutSkin from '../assets/result-logged-out.webp';
+import loggedInSkin from '../assets/result-logged-in.webp';
+import './ResultPage.css';
+
 const ResultPage: React.FC = () => {
   const navigate = useNavigate();
   const { state, ritual, auth, savePerformance, signOut, reset } = useApp();
   const { trackEvent } = useAnalytics();
 
+  // --- All your existing logic remains the same ---
   const downloadAudio = useCallback(() => {
-    // Double guard to absolutely block unauthenticated downloads
     if (!auth.user || !state.recordingBlob) {
       if (!auth.user) {
-        alert("Please sign in to download your performance.");
+        alert('Please sign in to download your performance.');
         trackEvent('download_attempt_unauthenticated');
       }
       return;
     }
-
     const url = URL.createObjectURL(state.recordingBlob);
     const a = document.createElement('a');
+    const baseName =
+      (state.file?.name ?? 'performance').replace(/\.[^/.]+$/, '');
     a.href = url;
-    // ✅ Fixed syntax error in filename
-    a.download = `\({state.file?.name.replace(/\.[^/.]+\)/, "") || 'performance'}-sound-print.webm`;
+    a.download = `${baseName}-sound-print.webm`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
     trackEvent('download_audio', {
       fileName: state.file?.name,
       fileSize: state.recordingBlob.size,
     });
-  }, [state.recordingBlob, state.file, trackEvent, auth.user]);
+  }, [auth.user, state.recordingBlob, state.file, trackEvent]);
 
   const replayRitual = useCallback(() => {
     reset();
@@ -48,267 +52,100 @@ const ResultPage: React.FC = () => {
 
   const handleSavePerformance = useCallback(async () => {
     if (!auth.user) return;
-
     const trackName = state.file?.name || 'Unknown Track';
     const trackHash = btoa(state.file?.name || '') + '-' + state.file?.size;
-
     await savePerformance(ritual.finalEQState, trackName, trackHash);
     trackEvent('save_performance', { userId: auth.user.id });
-    alert("Performance saved to your library.");
+    alert('Performance saved to your library.');
   }, [auth.user, state.file, ritual.finalEQState, savePerformance, trackEvent]);
+  // --- End of existing logic ---
+
+  const isLoggedIn = !!auth.user?.id;
 
   return (
-    <div style={{
-      // Use dynamic viewport height for mobile browser compatibility
-      minHeight: '100dvh',
-      width: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#050810',
-      fontFamily: 'monospace',
-      // Prevent content from touching screen edges
-      padding: '1.5rem',
-      boxSizing: 'border-box'
-    }}>
-      {/* Max width to prevent overstretching on large desktop screens */}
-      <div style={{
-        width: '100%',
-        maxWidth: '600px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '1.5rem'
-      }}>
+    <div className="result-root">
+      <div className="machine">
+        {/* The background image changes based on auth state */}
+        <img
+          src={isLoggedIn ? loggedInSkin : loggedOutSkin}
+          alt="Synthesizer machine interface"
+          className="machine__bg"
+        />
 
-        <h1 style={{
-          fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-          letterSpacing: '4px',
-          color: '#fff',
-          textAlign: 'center',
-          margin: 0
-        }}>
-          YOUR SOUND PRINT
-        </h1>
+        {/* --- DYNAMIC OVERLAYS --- */}
 
-        {/* Visual capture display */}
-        <div style={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-        }}>
+        {/* SOUND PRINT SCREEN */}
+        <div className="machine__screen">
           {ritual.soundPrintDataUrl ? (
             <img
               src={ritual.soundPrintDataUrl}
-              alt="Sound Print"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '40vh',
-                border: '2px solid #00ff66',
-                borderRadius: '8px',
-                boxShadow: '0 0 20px rgba(0, 255, 102, 0.2)'
-              }}
-              onError={() => console.error("Failed to load Sound Print")}
+              alt="Your sound print visualization"
+              className="machine__screen-img"
             />
           ) : (
-            <div style={{
-              width: '100%',
-              maxWidth: '300px',
-              aspectRatio: '3 / 2',
-              border: '1px dashed #333',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ccc',
-              gap: '8px',
-              padding: '1rem'
-            }}>
+            <div className="machine__screen-fallback">
               <span>SOUND PRINT NOT CAPTURED</span>
-              <small style={{ fontSize: '0.7rem', textAlign: 'center' }}>
-                This may have occurred during the performance ritual
+              <small>
+                This may have occurred during the performance ritual.
               </small>
             </div>
           )}
         </div>
 
-        {auth.isLoading ? (
-          <p style={{ color: '#fff', textAlign: 'center' }}>Loading session...</p>
-        ) : auth.user?.id ? (
-          // LOGGED-IN VIEW
-          <div style={{
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '1.5rem'
-          }}>
-            <p style={{ margin: 0, color: '#fff', textAlign: 'center' }}>
-              Signed in as {auth.user.email}
-            </p>
+        {/* TOP TEXT AREA (Changes based on auth state) */}
+        <div className="overlay overlay--top-text">
+          {auth.isLoading ? (
+            <p>Loading session…</p>
+          ) : isLoggedIn ? (
+            <p>Signed in as {auth.user?.email}</p>
+          ) : null}
+        </div>
 
-            <div style={{
-              display: 'flex',
-              gap: '0.8rem',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              width: '100%'
-            }}>
-              <button
-                onClick={downloadAudio}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#00ff66',
-                  color: '#000',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  flex: '1 1 auto',
-                  minWidth: '140px'
-                }}
-              >
-                DOWNLOAD AUDIO
-              </button>
-
-              <button
-                onClick={handleSavePerformance}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: 'transparent',
-                  color: '#00ff66',
-                  border: '1px solid #00ff66',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  flex: '1 1 auto',
-                  minWidth: '140px'
-                }}
-              >
-                SAVE TO LIBRARY
-              </button>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              gap: '0.8rem',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              width: '100%'
-            }}>
-              <button
-                onClick={replayRitual}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#4ade80',
-                  color: '#000',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  flex: '1 1 auto',
-                  minWidth: '120px'
-                }}
-              >
-                REPLAY RITUAL
-              </button>
-
-              <button
-                onClick={returnHome}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#333',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  flex: '1 1 auto',
-                  minWidth: '120px'
-                }}
-              >
-                RETURN HOME
-              </button>
-
-              <button
-                onClick={signOut}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#6b7280',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  flex: '1 1 auto',
-                  minWidth: '120px'
-                }}
-              >
-                SIGN OUT
-              </button>
-            </div>
-          </div>
+        {/* RENDER UI BASED ON AUTH STATE */}
+        {auth.isLoading ? null : isLoggedIn ? (
+          /* --- LOGGED-IN HOTSPOTS --- */
+          <>
+            <button
+              className="hotspot hotspot--download"
+              onClick={downloadAudio}
+              aria-label="Download Audio"
+            />
+            <button
+              className="hotspot hotspot--save"
+              onClick={handleSavePerformance}
+              aria-label="Save to Library"
+            />
+            <button
+              className="hotspot hotspot--replay"
+              onClick={replayRitual}
+              aria-label="Replay Ritual"
+            />
+            <button
+              className="hotspot hotspot--home"
+              onClick={returnHome}
+              aria-label="Return Home"
+            />
+            <button
+              className="hotspot hotspot--signout"
+              onClick={signOut}
+              aria-label="Sign Out"
+            />
+          </>
         ) : (
-          // LOGGED-OUT VIEW
-          <div style={{
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '1.5rem'
-          }}>
-            <AuthForm />
-
-            <div style={{
-              display: 'flex',
-              gap: '0.8rem',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              width: '100%'
-            }}>
-              <button
-                onClick={replayRitual}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#4ade80',
-                  color: '#000',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  flex: '1 1 auto',
-                  minWidth: '140px'
-                }}
-              >
-                REPLAY RITUAL
-              </button>
-
-              <button
-                onClick={returnHome}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#333',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  flex: '1 1 auto',
-                  minWidth: '140px'
-                }}
-              >
-                RETURN HOME
-              </button>
+          /* --- LOGGED-OUT UI & HOTSPOTS --- */
+          <>
+            {/* The AuthForm is placed precisely over the input area */}
+            <div className="overlay overlay--auth">
+              <AuthForm />
             </div>
-          </div>
+            {/* The single button available when logged out */}
+            <button
+              className="hotspot hotspot--replay-loggedout"
+              onClick={replayRitual}
+              aria-label="Replay Ritual"
+            />
+          </>
         )}
-
-        <p style={{
-          fontSize: '0.7rem',
-          opacity: 0.4,
-          color: '#fff',
-          textAlign: 'center',
-          margin: 0,
-          marginTop: '1rem'
-        }}>
-          ONLY PERFORMANCE DATA + LOGIN ARE STORED. WE DO NOT UPLOAD YOUR AUDIO FILES.
-        </p>
       </div>
     </div>
   );

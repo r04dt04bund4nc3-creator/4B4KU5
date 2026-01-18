@@ -1,0 +1,185 @@
+/* src/pages/ResultPage.css */
+
+.result-root {
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #050810;
+  padding: 1rem;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', 'Roboto', sans-serif;
+  color: #e0e0e0;
+}
+
+/* 
+  The machine container uses a fixed aspect ratio matching your 1365x768 image.
+  This is the key to making percentage-based overlays work perfectly.
+*/
+.machine {
+  position: relative;
+  width: 100%;
+  max-width: 1365px;
+  /* Lock the aspect ratio to your source image */
+  aspect-ratio: 1365 / 768; 
+  margin: auto;
+}
+
+.machine__bg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  pointer-events: none; /* Let clicks pass through to overlays */
+}
+
+/* === OVERLAYS & DYNAMIC CONTENT === */
+
+/* The CRT screen where the sound print is rendered */
+.machine__screen {
+  position: absolute;
+  overflow: hidden;
+  /* Calibrated for 1365x768 */
+  left: 31.1%;
+  top: 24.1%;
+  width: 37.7%;
+  height: 46.2%;
+  border-radius: 2.5%; /* Matches the rounded corners of the screen bezel */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.machine__screen-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.machine__screen-fallback {
+  width: 100%;
+  height: 100%;
+  padding: 1rem;
+  font-size: 0.8rem;
+  color: #ccc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.5rem;
+  backdrop-filter: blur(1px);
+}
+
+/* Generic container for absolutely positioned text */
+.overlay {
+  position: absolute;
+  text-align: center;
+  pointer-events: none; /* Text shouldn't be clickable */
+}
+
+/* "Signed in as..." text area */
+.overlay--top-text {
+  left: 30%;
+  top: 15%;
+  width: 40%;
+  font-family: monospace;
+  font-size: clamp(0.7rem, 1.2vw, 1rem); /* Responsive font size */
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+}
+
+/* The area where the AuthForm component will be placed */
+.overlay--auth {
+  position: absolute;
+  /* Calibrated for 1365x768 */
+  left: 35.2%;
+  top: 57.3%;
+  width: 29.7%;
+  height: 27.3%;
+}
+
+/* Ensure the AuthForm fills its container */
+.overlay--auth > * {
+  width: 100%;
+  height: 100%;
+}
+
+/* === INVISIBLE CLICKABLE BUTTONS (HOTSPOTS) === */
+
+.hotspot {
+  position: absolute;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 8px; /* Match the button shape for focus outline */
+  transition: box-shadow 0.2s ease-out;
+  border: 2px solid transparent;
+}
+
+/* Accessibility: Show a glowing outline when using keyboard navigation */
+.hotspot:focus-visible {
+  outline: none;
+  border-color: #00ff66;
+  box-shadow: 0 0 15px 3px rgba(0, 255, 102, 0.7);
+}
+
+/* Hide text but keep it for screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* --- LOGGED-IN HOTSPOTS (Calibrated for 1365x768) --- */
+
+.hotspot--download {
+  left: 13.0%;
+  top: 70.3%;
+  width: 27.8%;
+  height: 7.8%;
+}
+
+.hotspot--save {
+  left: 59.1%;
+  top: 70.3%;
+  width: 27.8%;
+  height: 7.8%;
+}
+
+.hotspot--replay {
+  left: 13.0%;
+  top: 80.5%;
+  width: 20.5%;
+  height: 7.8%;
+}
+
+.hotspot--home {
+  left: 36.3%;
+  top: 80.5%;
+  width: 20.5%;
+  height: 7.8%;
+}
+
+.hotspot--signout {
+  left: 59.1%;
+  top: 80.5%;
+  width: 20.5%;
+  height: 7.8%;
+}
+
+/* --- LOGGED-OUT HOTSPOTS (Calibrated for 1365x768) --- */
+
+.hotspot--replay-loggedout {
+  left: 53.8%;
+  top: 88.3%;
+  width: 17.2%;
+  height: 6.5%;
+}
