@@ -1,6 +1,6 @@
 // src/components/ui/AuthForm.tsx
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabaseClient'; // Adjusted path to lib
+import { supabase } from '../../lib/supabaseClient';
 
 const buttonBaseStyle: React.CSSProperties = {
   width: '100%',
@@ -24,15 +24,13 @@ export const AuthForm: React.FC = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  // Dynamic redirect ensures this works on Codespaces AND Localhost
   const getRedirectUrl = () => {
-    return window.location.origin; 
+    return window.location.origin + '/auth/callback';
   };
 
   const handleSocialLogin = async (provider: 'google' | 'discord') => {
     setLoading(true);
     setError('');
-    
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -52,26 +50,18 @@ export const AuthForm: React.FC = () => {
     setLoading(true);
     setError('');
     setMessage('');
-    
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        // If password login fails, try magic link
-        const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+        // Try magic link fallback
+        const { error: otpError } = await supabase.auth.signInWithOtp({
           email,
-          options: {
-            emailRedirectTo: getRedirectUrl(),
-          }
+          options: { emailRedirectTo: getRedirectUrl() },
         });
-        
-        if (magicLinkError) throw magicLinkError;
+        if (otpError) throw otpError;
         setMessage('Check your email for the login link!');
       } else {
-        // Success (handled by session listener in App)
+        setMessage('Successfully signed in!');
       }
     } catch (err: any) {
       setError(err.message);
@@ -83,36 +73,36 @@ export const AuthForm: React.FC = () => {
   return (
     <div style={{
       width: '100%',
-      maxWidth: '320px',
+      maxWidth: '400px',
       textAlign: 'center',
-      fontFamily: 'monospace'
+      fontFamily: 'monospace',
+      padding: '0 20px'
     }}>
-      <h3 style={{ marginBottom: '20px', color: '#fff' }}>SIGN IN TO DOWNLOAD & SAVE</h3>
+      <h3 style={{ marginBottom: '20px', color: '#fff' }}>
+        SIGN IN TO DOWNLOAD & SAVE
+      </h3>
 
-      {/* Social Logins */}
-      <button 
-        style={{ ...buttonBaseStyle, backgroundColor: '#4285F4', color: 'white', opacity: loading ? 0.7 : 1 }} 
+      <button
+        style={{ ...buttonBaseStyle, backgroundColor: '#4285F4', color: '#fff', opacity: loading ? 0.7 : 1 }}
         onClick={() => handleSocialLogin('google')}
         disabled={loading}
       >
         Sign in with Google
       </button>
-      <button 
-        style={{ ...buttonBaseStyle, backgroundColor: '#5865F2', color: 'white', opacity: loading ? 0.7 : 1 }} 
+      <button
+        style={{ ...buttonBaseStyle, backgroundColor: '#5865F2', color: '#fff', opacity: loading ? 0.7 : 1 }}
         onClick={() => handleSocialLogin('discord')}
         disabled={loading}
       >
         Sign in with Discord
       </button>
 
-      {/* Separator */}
       <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: '#666' }}>
         <hr style={{ flex: 1, borderColor: '#333' }} />
         <span style={{ padding: '0 10px' }}>OR</span>
         <hr style={{ flex: 1, borderColor: '#333' }} />
       </div>
 
-      {/* Email Form */}
       <form onSubmit={handleEmailSignIn}>
         <input
           type="email"
@@ -120,7 +110,15 @@ export const AuthForm: React.FC = () => {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={{ width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+          style={{
+            width: '100%',
+            padding: '10px',
+            marginBottom: '10px',
+            borderRadius: '4px',
+            border: '1px solid #444',
+            background: '#222',
+            color: '#fff'
+          }}
         />
         <input
           type="password"
@@ -128,16 +126,30 @@ export const AuthForm: React.FC = () => {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          style={{ width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+          style={{
+            width: '100%',
+            padding: '10px',
+            marginBottom: '10px',
+            borderRadius: '4px',
+            border: '1px solid #444',
+            background: '#222',
+            color: '#fff'
+          }}
         />
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={loading}
-          style={{ ...buttonBaseStyle, backgroundColor: '#00ff66', color: '#000', opacity: loading ? 0.7 : 1 }}
+          style={{
+            ...buttonBaseStyle,
+            backgroundColor: '#00ff66',
+            color: '#000',
+            opacity: loading ? 0.7 : 1
+          }}
         >
           {loading ? 'Processing...' : 'Sign In with Email'}
         </button>
       </form>
+
       {error && <p style={{ color: '#ff4d4d', fontSize: '0.8rem', marginTop: '10px' }}>{error}</p>}
       {message && <p style={{ color: '#4ade80', fontSize: '0.8rem', marginTop: '10px' }}>{message}</p>}
     </div>

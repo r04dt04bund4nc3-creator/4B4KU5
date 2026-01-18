@@ -8,13 +8,19 @@ const AuthCallbackPage: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Once the auth session is finalized, send the user back to their Sound Print
+    // Wait for auth to fully load, then check if user is logged in
     if (!auth.isLoading) {
-      navigate('/result');
+      if (auth.user) {
+        // User is logged in → send them to their Sound Print
+        navigate('/result');
+      } else {
+        // Login failed → send them back to upload
+        navigate('/');
+      }
     }
-  }, [auth.isLoading, navigate]);
+  }, [auth.isLoading, auth.user, navigate]);
 
-  // Show loading state while we finalize the login
+  // Show loading state while auth finalizes
   if (auth.isLoading) {
     return (
       <div style={{
