@@ -1,185 +1,145 @@
-/* src/pages/ResultPage.css */
-
-.result-root {
-  min-height: 100dvh;
-  width: 100%;
+/* Full screen container - dark background behind the machine */
+.res-container {
+  width: 100vw;
+  height: 100dvh;
+  background-color: #050810;
   display: flex;
-  justify-content: center;
   align-items: center;
-  background: #050810;
-  padding: 1rem;
-  box-sizing: border-box;
-  font-family: 'Segoe UI', 'Roboto', sans-serif;
-  color: #e0e0e0;
+  justify-content: center;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
-/* 
-  The machine container uses a fixed aspect ratio matching your 1365x768 image.
-  This is the key to making percentage-based overlays work perfectly.
-*/
-.machine {
+/* The Machine Wrapper - Maintains Aspect Ratio */
+.res-machine-wrapper {
   position: relative;
   width: 100%;
-  max-width: 1365px;
-  /* Lock the aspect ratio to your source image */
-  aspect-ratio: 1365 / 768; 
-  margin: auto;
+  max-width: 1400px;
+  aspect-ratio: 1365 / 768;
+  /* Ensure it doesn't get cut off on mobile */
+  max-height: 100dvh; 
 }
 
-.machine__bg {
+/* The Background Image */
+.res-skin {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   display: block;
-  width: 100%;
-  height: 100%;
-  user-select: none;
-  pointer-events: none; /* Let clicks pass through to overlays */
+  pointer-events: none; /* Let clicks pass through to buttons */
 }
 
-/* === OVERLAYS & DYNAMIC CONTENT === */
-
-/* The CRT screen where the sound print is rendered */
-.machine__screen {
+/* 1. Header Text (Email) */
+.res-header-text {
   position: absolute;
-  overflow: hidden;
-  /* Calibrated for 1365x768 */
-  left: 31.1%;
-  top: 24.1%;
-  width: 37.7%;
-  height: 46.2%;
-  border-radius: 2.5%; /* Matches the rounded corners of the screen bezel */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.machine__screen-img {
+  top: 14%;
+  left: 0;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.machine__screen-fallback {
-  width: 100%;
-  height: 100%;
-  padding: 1rem;
-  font-size: 0.8rem;
-  color: #ccc;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   text-align: center;
-  gap: 0.5rem;
-  backdrop-filter: blur(1px);
-}
-
-/* Generic container for absolutely positioned text */
-.overlay {
-  position: absolute;
-  text-align: center;
-  pointer-events: none; /* Text shouldn't be clickable */
-}
-
-/* "Signed in as..." text area */
-.overlay--top-text {
-  left: 30%;
-  top: 15%;
-  width: 40%;
+  color: #4ade80; /* Neon green matching the machine */
   font-family: monospace;
-  font-size: clamp(0.7rem, 1.2vw, 1rem); /* Responsive font size */
-  text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+  font-size: clamp(12px, 1.5vw, 18px);
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  pointer-events: none;
 }
 
-/* The area where the AuthForm component will be placed */
-.overlay--auth {
+/* 2. The Screen Box */
+.res-screen-box {
   position: absolute;
-  /* Calibrated for 1365x768 */
-  left: 35.2%;
-  top: 57.3%;
-  width: 29.7%;
-  height: 27.3%;
+  top: 24%;
+  left: 31.2%;
+  width: 37.6%;
+  height: 45%;
+  /* Flex centers the wave image inside the TV */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 5;
 }
 
-/* Ensure the AuthForm fills its container */
-.overlay--auth > * {
+.res-wave-img {
+  width: 95%;
+  height: 90%;
+  object-fit: contain;
+  /* Optional: add a glow to the wave itself */
+  filter: drop-shadow(0 0 5px rgba(255, 0, 255, 0.4));
+}
+
+/* 3. The Hotspots (Invisible Buttons) */
+.res-controls-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
+  z-index: 10;
 }
-
-/* === INVISIBLE CLICKABLE BUTTONS (HOTSPOTS) === */
 
 .hotspot {
   position: absolute;
-  padding: 0;
-  margin: 0;
-  background: transparent;
+  background: transparent; /* Invisible */
+  border: none;
   cursor: pointer;
-  border-radius: 8px; /* Match the button shape for focus outline */
-  transition: box-shadow 0.2s ease-out;
-  border: 2px solid transparent;
-}
-
-/* Accessibility: Show a glowing outline when using keyboard navigation */
-.hotspot:focus-visible {
-  outline: none;
-  border-color: #00ff66;
-  box-shadow: 0 0 15px 3px rgba(0, 255, 102, 0.7);
-}
-
-/* Hide text but keep it for screen readers */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
   padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
 }
 
-/* --- LOGGED-IN HOTSPOTS (Calibrated for 1365x768) --- */
+/* DEBUG MODE: Uncomment this to see the clickable zones */
+/* .hotspot { background: rgba(255, 0, 0, 0.3); border: 1px solid red; } */
 
-.hotspot--download {
-  left: 13.0%;
-  top: 70.3%;
-  width: 27.8%;
-  height: 7.8%;
+/* === LOGGED IN COORDINATES === */
+/* Green Download Button */
+.hs-download { 
+  left: 18.5%; 
+  top: 70.8%; 
+  width: 30%; 
+  height: 8.5%; 
 }
 
-.hotspot--save {
-  left: 59.1%;
-  top: 70.3%;
-  width: 27.8%;
-  height: 7.8%;
+/* Blue Save Button */
+.hs-save { 
+  left: 51.5%; 
+  top: 70.8%; 
+  width: 30%; 
+  height: 8.5%; 
 }
 
-.hotspot--replay {
-  left: 13.0%;
-  top: 80.5%;
-  width: 20.5%;
-  height: 7.8%;
+/* Bottom Row */
+.hs-replay { left: 18.8%; top: 83.5%; width: 19%; height: 6.5%; }
+.hs-home   { left: 40.2%; top: 83.5%; width: 19%; height: 6.5%; }
+.hs-signout{ left: 61.8%; top: 83.5%; width: 19%; height: 6.5%; }
+
+
+/* === LOGGED OUT COORDINATES === */
+
+/* Auth Form Positioner */
+/* This sits over the wood panel in the logged-out image */
+.res-auth-positioner {
+  position: absolute;
+  left: 35%;
+  top: 59%; 
+  width: 30%;
+  /* We rely on the AuthForm's internal layout, 
+     but we constrain it here */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.hotspot--home {
-  left: 36.3%;
-  top: 80.5%;
-  width: 20.5%;
-  height: 7.8%;
+/* IMPORTANT: Override AuthForm defaults to make it blend in */
+.res-auth-positioner button {
+  /* This targets buttons inside your AuthForm component */
+  opacity: 0.9; /* Slight transparency to show texture? */
+  margin-bottom: 5px;
 }
 
-.hotspot--signout {
-  left: 59.1%;
-  top: 80.5%;
-  width: 20.5%;
-  height: 7.8%;
+.res-auth-positioner input {
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 1px solid #555 !important;
+  color: white !important;
 }
 
-/* --- LOGGED-OUT HOTSPOTS (Calibrated for 1365x768) --- */
-
-.hotspot--replay-loggedout {
-  left: 53.8%;
-  top: 88.3%;
-  width: 17.2%;
-  height: 6.5%;
-}
+/* Bottom Replay/Home for Logged Out */
+.hs-replay-lo { left: 52.8%; top: 89.5%; width: 20%; height: 6%; }
+.hs-home-lo   { left: 74.0%; top: 89.5%; width: 20%; height: 6%; }

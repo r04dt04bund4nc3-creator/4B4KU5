@@ -1,4 +1,3 @@
-// src/pages/InstrumentPage.tsx - [REPLACE ENTIRE FILE]
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -64,6 +63,7 @@ const InstrumentPage: React.FC = () => {
   const { trackEvent } = useAnalytics();
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isIntroPlaying, setIsIntroPlaying] = useState(false); // NEW: Video state
   const [activeRows, setActiveRows] = useState<number[]>(new Array(MAX_BANDS).fill(-1));
   const [showRibbon, setShowRibbon] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -123,7 +123,6 @@ const InstrumentPage: React.FC = () => {
 
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
 
-    // Capture the canvas BEFORE navigating
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (canvas) {
       const dataUrl = canvas.toDataURL('image/png');
@@ -155,8 +154,9 @@ const InstrumentPage: React.FC = () => {
     requestRef.current = requestAnimationFrame(updateLoop);
   }, [state.audioBuffer, showRibbon]);
 
-  const startRitual = async () => {
-    if (isPlaying || !state.audioBuffer) return;
+  // Triggered after the video ends
+  const beginActualPlayback = async () => {
+    if (!state.audioBuffer) return;
     try {
       completedRef.current = false;
       await audioEngine.init();
@@ -172,6 +172,13 @@ const InstrumentPage: React.FC = () => {
     }
   };
 
+  // Called when the user taps the center play button
+  const handleLaunchClick = () => {
+    if (isPlaying || isIntroPlaying || !state.audioBuffer) return;
+    setIsIntroPlaying(true);
+    trackEvent('intro_video_start');
+  };
+
   useEffect(() => {
     return () => {
       audioEngine.stop();
@@ -180,11 +187,40 @@ const InstrumentPage: React.FC = () => {
   }, []);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#050810', position: 'relative', overflow: 'hidden' }}>
-      <div style={{ width: '100%', height: '100%', opacity: isPlaying ? 1 : 0, transition: 'opacity 1s ease-in' }}>
+    <div style={{ width: '100vw', height: '100dvh', background: '#050810', position: 'relative', overflow: 'hidden' }}>
+      
+      {/* 1. INTRO VIDEO OVERLAY */}
+      {isIntroPlaying && (
+        <video
+          src="/intro-dissolve.mp4"
+          autoPlay
+          playsInline
+          onEnded={() => {
+            setIsIntroPlaying(false);
+            beginActualPlayback();
+          }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            zIndex: 100,
+            background: '#050810'
+          }}
+        />
+      )}
+
+      {/* 2. MAIN INSTRUMENT CANVAS */}
+      <div style={{ 
+        width: '100%', 
+        height: '100%', 
+        opacity: isPlaying ? 1 : 0, 
+        transition: 'opacity 1.5s ease-in' // Smooth fade in after intro
+      }}>
         <Canvas
           dpr={[1, 2]}
-          gl={{ preserveDrawingBuffer: true }} // CRITICAL FIX: Allows us to capture the image
+          gl={{ preserveDrawingBuffer: true }}
           camera={{ position: [0, 0, 1.4], fov: 60 }}
           style={{ touchAction: 'none' }}
         >
@@ -199,14 +235,49 @@ const InstrumentPage: React.FC = () => {
         </Canvas>
       </div>
 
-      {!isPlaying && (
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: "url('/ritual-launch-bg.jpg')", backgroundSize: 'cover', backgroundPosition: 'center', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <button onClick={startRitual} disabled={!state.audioBuffer} style={{ width: '28vmin', height: '28vmin', borderRadius: '50%', backgroundColor: 'transparent', border: 'none', cursor: !state.audioBuffer ? 'wait' : 'pointer', boxShadow: !state.audioBuffer ? 'none' : '0 0 50px rgba(0, 255, 102, 0.4)', animation: !state.audioBuffer ? 'none' : 'pulse 3s infinite ease-in-out' }} />
-          {!state.audioBuffer && <div style={{ position: 'absolute', color: 'rgba(0, 255, 102, 0.6)', fontFamily: 'monospace', fontSize: '12px', letterSpacing: '2px' }}>INITIALIZING...</div>}
+      {/* 3. LAUNCH SCREEN */}
+      {!isPlaying && !isIntroPlaying && (
+        <div style={{ 
+          position: 'absolute', 
+          inset: 0, 
+          backgroundImage: "url('/ritual-launch-bg.jpg')", 
+          backgroundSize: 'cover', 
+          backgroundPosition: 'center', 
+          zIndex: 50, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center' 
+        }}>
+          <button 
+            onClick={handleLaunchClick} 
+            disabled={!state.audioBuffer} 
+            style={{ 
+              width: '28vmin', 
+              height: '28vmin', 
+              borderRadius: '50%', 
+              backgroundColor: 'transparent', 
+              border: 'none', 
+              cursor: !state.audioBuffer ? 'wait' : 'pointer', 
+              boxShadow: !state.audioBuffer ? 'none' : '0 0 50px rgba(0, 255, 102, 0.4)', 
+              animation: !state.audioBuffer ? 'none' : 'pulse 3s infinite ease-in-out' 
+            }} 
+          />
+          {!state.audioBuffer && (
+            <div style={{ 
+              position: 'absolute', 
+              color: 'rgba(0, 255, 102, 0.6)', 
+              fontFamily: 'monospace', 
+              fontSize: '12px', 
+              letterSpacing: '2px' 
+            }}>
+              INITIALIZING...
+            </div>
+          )}
           <style>{`@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }`}</style>
         </div>
       )}
 
+      {/* 4. TIMER */}
       {isPlaying && (
         <div style={{ position: 'absolute', bottom: '20px', right: '20px', fontFamily: 'monospace', color: timeLeft <= RITUAL_DURATION_SEC ? '#FF003C' : '#555' }}>
           {timeLeft.toFixed(1)}s
