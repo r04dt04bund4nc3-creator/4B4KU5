@@ -17,16 +17,15 @@ const buttonBaseStyle: React.CSSProperties = {
   gap: '10px'
 };
 
-export const AuthForm: React.FC = () => {
+// Added showTitle prop (defaulting to true for other pages)
+export const AuthForm: React.FC<{ showTitle?: boolean }> = ({ showTitle = true }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const getRedirectUrl = () => {
-    return window.location.origin + '/auth/callback';
-  };
+  const getRedirectUrl = () => window.location.origin + '/auth/callback';
 
   const handleSocialLogin = async (provider: 'google' | 'discord') => {
     setLoading(true);
@@ -34,9 +33,7 @@ export const AuthForm: React.FC = () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: {
-          redirectTo: getRedirectUrl(),
-        },
+        options: { redirectTo: getRedirectUrl() },
       });
       if (error) throw error;
     } catch (err: any) {
@@ -53,7 +50,6 @@ export const AuthForm: React.FC = () => {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        // Try magic link fallback
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email,
           options: { emailRedirectTo: getRedirectUrl() },
@@ -73,14 +69,15 @@ export const AuthForm: React.FC = () => {
   return (
     <div style={{
       width: '100%',
-      maxWidth: '400px',
       textAlign: 'center',
       fontFamily: 'monospace',
-      padding: '0 20px'
     }}>
-      <h3 style={{ marginBottom: '20px', color: '#fff' }}>
-        SIGN IN TO DOWNLOAD & SAVE
-      </h3>
+      {/* Hide this if showTitle is false */}
+      {showTitle && (
+        <h3 style={{ marginBottom: '20px', color: '#fff' }}>
+          SIGN IN TO DOWNLOAD & SAVE
+        </h3>
+      )}
 
       <button
         style={{ ...buttonBaseStyle, backgroundColor: '#4285F4', color: '#fff', opacity: loading ? 0.7 : 1 }}
@@ -97,9 +94,9 @@ export const AuthForm: React.FC = () => {
         Sign in with Discord
       </button>
 
-      <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: '#666' }}>
+      <div style={{ display: 'flex', alignItems: 'center', margin: '15px 0', color: '#666' }}>
         <hr style={{ flex: 1, borderColor: '#333' }} />
-        <span style={{ padding: '0 10px' }}>OR</span>
+        <span style={{ padding: '0 10px', fontSize: '0.8rem' }}>OR</span>
         <hr style={{ flex: 1, borderColor: '#333' }} />
       </div>
 
@@ -116,7 +113,7 @@ export const AuthForm: React.FC = () => {
             marginBottom: '10px',
             borderRadius: '4px',
             border: '1px solid #444',
-            background: '#222',
+            background: 'rgba(0,0,0,0.5)',
             color: '#fff'
           }}
         />
@@ -132,7 +129,7 @@ export const AuthForm: React.FC = () => {
             marginBottom: '10px',
             borderRadius: '4px',
             border: '1px solid #444',
-            background: '#222',
+            background: 'rgba(0,0,0,0.5)',
             color: '#fff'
           }}
         />
@@ -143,15 +140,16 @@ export const AuthForm: React.FC = () => {
             ...buttonBaseStyle,
             backgroundColor: '#00ff66',
             color: '#000',
-            opacity: loading ? 0.7 : 1
+            opacity: loading ? 0.7 : 1,
+            fontSize: '0.9rem'
           }}
         >
           {loading ? 'Processing...' : 'Sign In with Email'}
         </button>
       </form>
 
-      {error && <p style={{ color: '#ff4d4d', fontSize: '0.8rem', marginTop: '10px' }}>{error}</p>}
-      {message && <p style={{ color: '#4ade80', fontSize: '0.8rem', marginTop: '10px' }}>{message}</p>}
+      {error && <p style={{ color: '#ff4d4d', fontSize: '0.7rem', marginTop: '5px' }}>{error}</p>}
+      {message && <p style={{ color: '#4ade80', fontSize: '0.7rem', marginTop: '5px' }}>{message}</p>}
     </div>
   );
 };

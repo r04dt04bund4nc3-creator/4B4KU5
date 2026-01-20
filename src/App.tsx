@@ -71,11 +71,7 @@ function App() {
         />
         <Route
           path="/result"
-          element={
-            <Shell>
-              <ResultPage />
-            </Shell>
-          }
+          element={<ResultPage />}
         />
         {/* OAuth returns here; we finalize session then bounce to /result */}
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
