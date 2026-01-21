@@ -78,19 +78,16 @@ const ResultPage: React.FC = () => {
     <div className="res-page-root">
       <div className="res-machine-container">
         
-        {/* HARDWARE BACKGROUND */}
         <img 
           src={isLoggedIn ? loggedInSkin : loggedOutSkin} 
           className="res-background-image"
           alt="" 
         />
 
-        {/* LOGGED IN USER OVERLAY */}
         <div className="res-email-overlay">
           {auth.isLoading ? "SYNCING..." : isLoggedIn ? `Logged in: ${auth.user?.email}` : ""}
         </div>
 
-        {/* CENTRAL SOUND PRINT SCREEN */}
         <div className="res-visualizer-screen">
           {ritual.soundPrintDataUrl && (
             <img 
@@ -101,43 +98,34 @@ const ResultPage: React.FC = () => {
           )}
         </div>
 
-        {/* INVISIBLE INTERACTION LAYER */}
         <div className="res-interactive-layer">
           {isLoggedIn ? (
-            /* --- LOGGED IN BUTTONS --- */
             <>
-              <button className="hs hs-download" onClick={downloadAudio} title="Download" />
-              <button className="hs hs-save" onClick={handleSave} title="Save to Library" />
-              <button className="hs hs-replay-li" onClick={replay} title="Replay" />
-              <button className="hs hs-home-li" onClick={goHome} title="Home" />
-              <button className="hs hs-signout-li" onClick={signOut} title="Sign Out" />
+              <button className="hs hs-download" onClick={downloadAudio} />
+              <button className="hs hs-save" onClick={handleSave} />
+              <button className="hs hs-replay-li" onClick={replay} />
+              <button className="hs hs-home-li" onClick={goHome} />
+              <button className="hs hs-signout-li" onClick={signOut} />
             </>
           ) : (
-            /* --- LOGGED OUT BUTTONS & INPUTS --- */
             <>
-              {/* Login Hotspots */}
               <button className="hs hs-google" onClick={() => handleSocialLogin('google')} />
               <button className="hs hs-discord" onClick={() => handleSocialLogin('discord')} />
               
-              {/* Completely Transparent Form Inputs */}
-              <form onSubmit={handleEmailSignIn}>
-                <input 
-                  type="email" 
-                  className="hs-input hs-input-email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-                <input 
-                  type="password" 
-                  className="hs-input hs-input-pass" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <button type="submit" className="hs hs-email-signin" />
-              </form>
+              <input 
+                type="email" 
+                className="hs-input hs-input-email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input 
+                type="password" 
+                className="hs-input hs-input-pass" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
 
+              <button className="hs hs-email-signin" onClick={() => handleEmailSignIn()} />
               <button className="hs hs-replay-lo" onClick={replay} />
             </>
           )}

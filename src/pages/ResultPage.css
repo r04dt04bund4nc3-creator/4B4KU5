@@ -11,18 +11,20 @@
   z-index: 9999;
 }
 
+/* Forces the container to always stay 16:9 and fit inside the window */
 .res-machine-container {
   position: relative;
-  width: 100%;
-  max-width: 1400px;
-  aspect-ratio: 1365 / 768;
-  max-height: 100vh;
+  width: min(100vw, calc(100vh * (16 / 9)));
+  height: min(100vh, calc(100vw * (9 / 16)));
+  aspect-ratio: 16 / 9;
 }
 
+/* Force image to stretch/shrink to fit the 16:9 container exactly */
 .res-background-image {
   width: 100%;
   height: 100%;
   display: block;
+  object-fit: fill; 
   pointer-events: none;
 }
 
@@ -39,12 +41,13 @@
   text-transform: uppercase;
 }
 
+/* REFINED: Sound Print Window coordinates */
 .res-visualizer-screen {
   position: absolute;
-  top: 24%;
-  left: 31.2%;
-  width: 37.6%;
-  height: 45%;
+  top: 18.5%;    /* Higher up than before */
+  left: 35.5%;   /* More centered horizontally */
+  width: 29.0%;  /* Much narrower to fit the circle */
+  height: 41.5%; /* Taller to fill the vertical space */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -53,13 +56,12 @@
 }
 
 .res-print-internal {
-  max-width: 90%;
-  max-height: 85%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   display: block;
 }
 
-/* Interaction Layer: Covers entire machine */
 .res-interactive-layer {
   position: absolute;
   top: 0;
@@ -69,15 +71,14 @@
   z-index: 30;
 }
 
-/* All buttons and inputs are invisible but clickable */
 .hs {
   position: absolute;
   background: transparent !important;
   border: none !important;
   cursor: pointer;
+  padding: 0;
 }
 
-/* Inputs are fully transparent as well */
 .hs-input {
   position: absolute;
   background: transparent !important;
@@ -86,30 +87,24 @@
   color: #fff;
   font-family: monospace;
   font-size: 1.1vw;
-  padding: 0;
+  padding: 0 10px;
 }
 
-/* === LOGGED OUT: Coordinates for result-logged-out.webp === */
+/* --- RECALIBRATED LOGGED OUT COORDINATES --- */
+.hs-google        { top: 61.2%; left: 41.5%; width: 17.0%; height: 4.2%; }
+.hs-discord       { top: 66.5%; left: 41.5%; width: 17.0%; height: 4.2%; }
+.hs-input-email   { top: 73.5%; left: 40.5%; width: 19.0%; height: 4.8%; }
+.hs-input-pass    { top: 79.2%; left: 40.5%; width: 19.0%; height: 4.8%; }
+.hs-email-signin  { top: 89.5%; left: 29.2%; width: 20.0%; height: 8.0%; }
+.hs-replay-lo     { top: 89.5%; left: 51.5%; width: 20.0%; height: 8.0%; }
 
-.hs-google        { top: 66.6%; left: 38.3%; width: 23.6%; height: 4.5%; }
-.hs-discord       { top: 72.0%; left: 38.3%; width: 23.6%; height: 4.5%; }
-.hs-input-email   { top: 78.0%; left: 33.5%; width: 31.2%; height: 4.8%; }
-.hs-input-pass    { top: 83.6%; left: 33.5%; width: 31.2%; height: 4.8%; }
-.hs-email-signin  { top: 90.0%; left: 20.5%; width: 24.2%; height: 6.5%; }
-.hs-replay-lo     { top: 90.0%; left: 54.8%; width: 24.2%; height: 6.5%; }
+/* --- RECALIBRATED LOGGED IN COORDINATES --- */
+.hs-download      { top: 71.2%; left: 18.2%; width: 30.5%; height: 9.0%; }
+.hs-save          { top: 71.2%; left: 52.0%; width: 30.5%; height: 9.0%; }
+.hs-replay-li     { top: 84.2%; left: 19.2%; width: 18.5%; height: 6.5%; }
+.hs-home-li       { top: 84.2%; left: 40.8%; width: 18.5%; height: 6.5%; }
+.hs-signout-li    { top: 84.2%; left: 62.2%; width: 18.5%; height: 6.5%; }
 
-/* === LOGGED IN: Coordinates for result-logged-in.webp === */
-
-.hs-download      { top: 70.5%; left: 17.8%; width: 28.5%; height: 7.2%; }
-.hs-save          { top: 70.5%; left: 53.2%; width: 28.5%; height: 7.2%; }
-
-.hs-replay-li     { top: 81.5%; left: 17.8%; width: 17.5%; height: 6.0%; }
-.hs-home-li       { top: 81.5%; left: 39.2%; width: 17.5%; height: 6.0%; }
-.hs-signout-li    { top: 81.5%; left: 60.8%; width: 17.5%; height: 6.0%; }
-
-/* Debug aid – uncomment to verify alignment */
-/*
-.hs, .hs-input {
-  background: rgba(255, 0, 0, 0.2) !important;
-}
-*/
+/* DEBUG MODE: Uncomment to see where targets are if needed */
+/* .hs { background: rgba(255, 0, 0, 0.3) !important; } */
+/* .hs-input { background: rgba(0, 255, 0, 0.3) !important; } */
