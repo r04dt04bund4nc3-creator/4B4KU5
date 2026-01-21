@@ -1,34 +1,146 @@
 /* src/pages/ResultPage.css */
 
-/* Force the AuthForm container to be transparent and strip its 'card' look */
+/* 1. THE "NUCLEAR" RESET 
+   This blocks any old styles from App.css or index.css from ghosting in. */
+.res-root-override, .res-root-override * {
+  all: unset;
+  box-sizing: border-box;
+}
+
+/* Full screen wrapper */
+.res-root-override {
+  display: flex;
+  width: 100vw;
+  height: 100dvh;
+  background-color: #050810;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+/* 2. THE MACHINE WRAPPER 
+   Maintains the 16:9 aspect ratio so buttons line up. */
+.res-machine-container {
+  position: relative;
+  width: 100%;
+  max-width: 1400px;
+  aspect-ratio: 1365 / 768;
+  max-height: 100dvh;
+}
+
+/* Hardware background image */
+.res-background-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* 3. DYNAMIC TEXT OVERLAYS */
+.res-email-overlay {
+  position: absolute;
+  top: 14.5%;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  color: #4ade80;
+  font-family: monospace;
+  font-size: 1.2vw;
+  display: block;
+  pointer-events: none;
+  text-transform: uppercase;
+  z-index: 10;
+}
+
+/* 4. THE SOUND PRINT SCREEN AREA 
+   This is the "box" the Sound Print sits in. */
+.res-visualizer-screen {
+  position: absolute;
+  top: 24%;
+  left: 31.2%;
+  width: 37.6%;
+  height: 45%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 5;
+}
+
+/* The actual Sound Print Image - SHRUNK TO FIT */
+.res-print-internal {
+  all: unset;
+  max-width: 90%;
+  max-height: 85%;
+  object-fit: contain;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  display: block;
+  filter: drop-shadow(0 0 5px rgba(255, 0, 255, 0.4));
+}
+
+/* 5. AUTH FORM POSITIONING (Logged Out) */
+.res-auth-box-position {
+  position: absolute;
+  top: 55%;
+  left: 35%;
+  width: 30%;
+  display: block !important;
+  z-index: 20;
+}
+
+/* Clean up AuthForm appearance inside machine */
 .res-auth-box-position > div {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
+}
+
+.res-auth-box-position input {
+  all: revert; /* Brings back standard browser input look */
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 1px solid #444 !important;
+  color: #fff !important;
+  padding: 10px !important;
+  margin-bottom: 8px !important;
   width: 100% !important;
+  display: block !important;
 }
 
-/* Force hide the 'Sign in to download' text if it's baked into AuthForm */
-.res-auth-box-position h2, 
-.res-auth-box-position p:first-child {
-  display: none !important;
+/* 6. HOTSPOTS (Invisible Buttons) */
+.res-interactive-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 30; /* Sit on top of everything to ensure they work */
 }
 
-/* Ensure our invisible hotspots are actually invisible */
 .hs {
   position: absolute;
   background: transparent !important;
   border: none !important;
   cursor: pointer;
-  outline: none;
+  display: block;
 }
 
-/* Hotspot Coordinates (Keep these as they were) */
+/* DEBUG: Change background to rgba(255,0,0,0.3) to see the hotspots */
+.hs:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* LOGGED IN COORDINATES */
 .hs-download { left: 18.5%; top: 70.8%; width: 30%; height: 8.5%; }
 .hs-save { left: 51.5%; top: 70.8%; width: 30%; height: 8.5%; }
 .hs-replay { left: 18.8%; top: 83.5%; width: 19%; height: 6.5%; }
 .hs-home { left: 40.2%; top: 83.5%; width: 19%; height: 6.5%; }
 .hs-signout { left: 61.8%; top: 83.5%; width: 19%; height: 6.5%; }
+
+/* LOGGED OUT COORDINATES */
 .hs-replay-lo { left: 52.8%; top: 89.5%; width: 20%; height: 6%; }
 .hs-home-lo { left: 74.0%; top: 89.5%; width: 20%; height: 6%; }
