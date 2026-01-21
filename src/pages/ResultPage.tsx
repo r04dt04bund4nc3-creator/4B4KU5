@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
-import { AuthForm } from '../components/ui/AuthForm';
+import { supabase } from '../lib/supabaseClient';
 
 import loggedOutSkin from '../assets/result-logged-out.webp';
 import loggedInSkin from '../assets/result-logged-in.webp';
@@ -12,6 +12,32 @@ const ResultPage: React.FC = () => {
   const navigate = useNavigate();
   const { state, ritual, auth, savePerformance, signOut, reset } = useApp();
   const { trackEvent } = useAnalytics();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const getRedirectUrl = () => window.location.origin + '/auth/callback';
+
+  const handleSocialLogin = async (provider: 'google' | 'discord') => {
+    trackEvent('social_login_attempt', { provider });
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: getRedirectUrl() },
+    });
+  };
+
+  const handleEmailSignIn = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    trackEvent('email_login_attempt');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: getRedirectUrl() },
+      });
+      alert('Check your email for the login link!');
+    }
+  };
 
   const downloadAudio = useCallback(() => {
     if (!auth.user || !state.recordingBlob) return;
@@ -49,97 +75,70 @@ const ResultPage: React.FC = () => {
   const isLoggedIn = !!auth.user?.id;
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      backgroundColor: '#050810',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-      zIndex: 9999,
-      margin: 0,
-      padding: 0
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '100%',
-        maxWidth: '1400px',
-        aspectRatio: '1365 / 768',
-        maxHeight: '100dvh'
-      }}>
+    <div className="res-page-root">
+      <div className="res-machine-container">
         
-        {/* MACHINE BACKGROUND */}
+        {/* HARDWARE BACKGROUND */}
         <img 
           src={isLoggedIn ? loggedInSkin : loggedOutSkin} 
-          style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} 
+          className="res-background-image"
           alt="" 
         />
 
-        {/* EMAIL TEXT */}
-        <div style={{
-          position: 'absolute',
-          top: '14.5%',
-          left: 0,
-          width: '100%',
-          textAlign: 'center',
-          color: '#4ade80',
-          fontFamily: 'monospace',
-          fontSize: '1.2vw',
-          pointerEvents: 'none',
-          textTransform: 'uppercase'
-        }}>
+        {/* LOGGED IN USER OVERLAY */}
+        <div className="res-email-overlay">
           {auth.isLoading ? "SYNCING..." : isLoggedIn ? `Logged in: ${auth.user?.email}` : ""}
         </div>
 
-        {/* SOUND PRINT SCREEN AREA */}
-        <div style={{
-          position: 'absolute',
-          top: '24%',
-          left: '31.2%',
-          width: '37.6%',
-          height: '45%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          zIndex: 5
-        }}>
+        {/* CENTRAL SOUND PRINT SCREEN */}
+        <div className="res-visualizer-screen">
           {ritual.soundPrintDataUrl && (
             <img 
               src={ritual.soundPrintDataUrl} 
-              style={{
-                // Force it to shrink to fit inside the screen
-                maxWidth: '90%',
-                maxHeight: '85%',
-                objectFit: 'contain',
-                background: 'transparent', // Ensure no black box
-                border: 'none',
-                boxShadow: 'none',
-                display: 'block'
-              }} 
+              className="res-print-internal"
               alt="Sound Print" 
             />
           )}
         </div>
 
-        {/* HOTSPOTS & AUTH FORM */}
+        {/* INVISIBLE INTERACTION LAYER */}
         <div className="res-interactive-layer">
           {isLoggedIn ? (
+            /* --- LOGGED IN BUTTONS --- */
             <>
-              <button className="hs hs-download" onClick={downloadAudio} />
-              <button className="hs hs-save" onClick={handleSave} />
-              <button className="hs hs-replay" onClick={replay} />
-              <button className="hs hs-home" onClick={goHome} />
-              <button className="hs hs-signout" onClick={signOut} />
+              <button className="hs hs-download" onClick={downloadAudio} title="Download" />
+              <button className="hs hs-save" onClick={handleSave} title="Save to Library" />
+              <button className="hs hs-replay-li" onClick={replay} title="Replay" />
+              <button className="hs hs-home-li" onClick={goHome} title="Home" />
+              <button className="hs hs-signout-li" onClick={signOut} title="Sign Out" />
             </>
           ) : (
+            /* --- LOGGED OUT BUTTONS & INPUTS --- */
             <>
-              <div className="res-auth-box-position">
-                <AuthForm showTitle={false} />
-              </div>
+              {/* Login Hotspots */}
+              <button className="hs hs-google" onClick={() => handleSocialLogin('google')} />
+              <button className="hs hs-discord" onClick={() => handleSocialLogin('discord')} />
+              
+              {/* Completely Transparent Form Inputs */}
+              <form onSubmit={handleEmailSignIn}>
+                <input 
+                  type="email" 
+                  className="hs-input hs-input-email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+                <input 
+                  type="password" 
+                  className="hs-input hs-input-pass" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button type="submit" className="hs hs-email-signin" />
+              </form>
+
               <button className="hs hs-replay-lo" onClick={replay} />
-              <button className="hs hs-home-lo" onClick={goHome} />
             </>
           )}
         </div>
