@@ -11,14 +11,12 @@
   z-index: 9999;
 }
 
-/* FILL ANY WINDOW */
 .res-machine-container {
   position: relative;
   width: 100vw;
   height: 100vh;
 }
 
-/* STRETCH TO FILL */
 .res-background-image {
   width: 100%;
   height: 100%;
@@ -40,19 +38,31 @@
   text-transform: uppercase;
 }
 
-/* REFINED: Precise Sound Print Window (shrunk to fit tighter) */
+/* BASE VISUALIZER SCREEN */
 .res-visualizer-screen {
   position: absolute;
-  top: 25.0%;    
-  left: 33.5%;   
-  width: 33.0%;  
-  height: 40.0%; 
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   z-index: 5;
   background: transparent;
+}
+
+/* COORDINATES FOR LOGGED IN (Download Page) - KEEP AS IS */
+.vs-li {
+  top: 25.0%;    
+  left: 33.5%;   
+  width: 33.0%;  
+  height: 40.0%; 
+}
+
+/* COORDINATES FOR LOGGED OUT (Login Page) - NEW PRECISE VALUES */
+.vs-lo {
+  top: 22.0%;    /* Slightly higher than before to fit inside the frame */
+  left: 35.5%;   /* Centered horizontally under the "YOUR SOUND PRINT" title */
+  width: 29.0%;  /* Narrower to fit the hardware circle */
+  height: 38.0%; /* Taller to fill the vertical space without covering buttons */
 }
 
 .res-print-internal {
@@ -85,15 +95,27 @@
   font-size: 1.1vw;
 }
 
-/* LOGGED OUT */
-.hs-google        { top: 66.5%; left: 41.4%; width: 17.2%; height: 4.5%; }
-.hs-discord       { top: 71.8%; left: 41.4%; width: 17.2%; height: 4.5%; }
-.hs-input-email   { top: 78.5%; left: 40.3%; width: 19.5%; height: 4.5%; }
-.hs-input-pass    { top: 84.0%; left: 40.3%; width: 19.5%; height: 4.5%; }
-.hs-email-signin  { top: 89.5%; left: 29.2%; width: 21.0%; height: 7.5%; }
-.hs-replay-lo     { top: 89.5%; left: 51.5%; width: 21.0%; height: 7.5%; }
+/* --- RECALIBRATED LOGGED OUT TARGETS (MATCHES YOUR NEW IMAGE) --- */
 
-/* LOGGED IN */
+/* Google Button */
+.hs-google        { top: 67.5%; left: 41.0%; width: 18.0%; height: 4.0%; }
+
+/* Discord Button */
+.hs-discord       { top: 72.5%; left: 41.0%; width: 18.0%; height: 4.0%; }
+
+/* Email Input Field */
+.hs-input-email   { top: 78.0%; left: 40.0%; width: 20.0%; height: 4.0%; }
+
+/* Password Input Field */
+.hs-input-pass    { top: 83.0%; left: 40.0%; width: 20.0%; height: 4.0%; }
+
+/* "Sign In with Email" Button */
+.hs-email-signin  { top: 89.5%; left: 29.0%; width: 22.0%; height: 7.0%; }
+
+/* "Replay Ritual" Button */
+.hs-replay-lo     { top: 89.5%; left: 53.0%; width: 22.0%; height: 7.0%; }
+
+/* --- LOGGED IN TARGETS (Remains working) --- */
 .hs-download      { top: 71.5%; left: 18.5%; width: 30.5%; height: 8.8%; }
 .hs-save          { top: 71.5%; left: 51.0%; width: 30.5%; height: 8.8%; }
 .hs-replay-li     { top: 84.0%; left: 19.0%; width: 19.0%; height: 6.5%; }
