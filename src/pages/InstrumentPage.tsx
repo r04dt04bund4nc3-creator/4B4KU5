@@ -26,15 +26,6 @@ const InstrumentPage: React.FC = () => {
   const startTimeRef = useRef<number>(0);
   const completedRef = useRef(false);
 
-  // for visuals (continuous)
-  const [pointer01, setPointer01] = useState<{ x: number; y: number; down: boolean }>({
-    x: 0.5,
-    y: 0.5,
-    down: false,
-  });
-
-  const stageRef = useRef<HTMLDivElement | null>(null);
-
   useEffect(() => {
     if (!state.file && !state.audioBuffer) navigate('/');
   }, [state.file, state.audioBuffer, navigate]);
@@ -60,8 +51,7 @@ const InstrumentPage: React.FC = () => {
     decodeAudio();
   }, [state.file, state.audioBuffer, isDecoding, setAudioBuffer, trackEvent]);
 
-  // continuous mapping: full screen -> 36x36 engine
-  const handleInteraction01 = useCallback(
+  const onTriggerAudio = useCallback(
     (x01: number, y01: number) => {
       if (!isPlaying) return;
 
@@ -140,25 +130,8 @@ const InstrumentPage: React.FC = () => {
     };
   }, []);
 
-  // DOM pointer -> normalized coords
-  const updateFromPointerEvent = (e: React.PointerEvent) => {
-    const el = stageRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const x01 = (e.clientX - r.left) / r.width;
-    const y01_top = (e.clientY - r.top) / r.height;
-    const y01 = 1 - y01_top; // bottom = 0, top = 1
-
-    const cx = Math.min(1, Math.max(0, x01));
-    const cy = Math.min(1, Math.max(0, y01));
-
-    setPointer01(prev => ({ ...prev, x: cx, y: cy }));
-    if (pointer01.down) handleInteraction01(cx, cy);
-  };
-
   return (
     <div
-      ref={stageRef}
       style={{
         width: '100vw',
         height: '100dvh',
@@ -200,34 +173,13 @@ const InstrumentPage: React.FC = () => {
           style={{ position: 'absolute', inset: 0 }}
         >
           <FlowFieldInstrument
-            pointer01={pointer01}
+            onTriggerAudio={onTriggerAudio}
             countdownProgress={countdownProgress}
           />
         </Canvas>
       </div>
 
-      {/* DOM interaction layer (blank slate, invisible) */}
-      {isPlaying && !isIntroPlaying && (
-        <div
-          style={{ position: 'absolute', inset: 0, zIndex: 10 }}
-          onPointerDown={(e) => {
-            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-            setPointer01(prev => ({ ...prev, down: true }));
-            updateFromPointerEvent(e);
-            // apply immediately on down:
-            const el = stageRef.current!;
-            const r = el.getBoundingClientRect();
-            const x01 = (e.clientX - r.left) / r.width;
-            const y01 = 1 - (e.clientY - r.top) / r.height;
-            handleInteraction01(Math.min(1, Math.max(0, x01)), Math.min(1, Math.max(0, y01)));
-          }}
-          onPointerMove={updateFromPointerEvent}
-          onPointerUp={() => setPointer01(prev => ({ ...prev, down: false }))}
-          onPointerCancel={() => setPointer01(prev => ({ ...prev, down: false }))}
-        />
-      )}
-
-      {/* launch screen unchanged */}
+      {/* launch screen */}
       {!isPlaying && !isIntroPlaying && (
         <div
           style={{
