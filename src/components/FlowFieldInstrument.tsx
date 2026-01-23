@@ -3,7 +3,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { BAND_COLORS } from '../config/bandColors';
 
-const MAX_BANDS = 36;git
+const MAX_BANDS = 36;
 
 type Props = {
   activeRows: number[];
