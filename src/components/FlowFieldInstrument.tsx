@@ -1,14 +1,14 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { BAND_COLORS } from '../config/bandColors';
 
-const MAX_BANDS = 36;
+const MAX_BANDS = 36;git
 
 type Props = {
   activeRows: number[];
   handleInteraction: (uv: THREE.Vector2) => void;
-  countdownProgress: number; // 0..1 during last 36s
+  countdownProgress: number; // 0..1
 };
 
 export const FlowFieldInstrument: React.FC<Props> = ({
@@ -16,13 +16,9 @@ export const FlowFieldInstrument: React.FC<Props> = ({
   handleInteraction,
   countdownProgress,
 }) => {
-  const { size } = useThree();
+  const { gl, size } = useThree();
 
-  const pointer = useRef(new THREE.Vector2(-10, -10));
-  const lastPointer = useRef(new THREE.Vector2(-10, -10));
-  const pointerDown = useRef(false);
-
-  // palette packed for GPU
+  // 1. Prepare Palette and EQ data for GPU
   const palette = useMemo(() => {
     const arr = new Float32Array(MAX_BANDS * 3);
     BAND_COLORS.forEach((c, i) => {
@@ -33,170 +29,154 @@ export const FlowFieldInstrument: React.FC<Props> = ({
     return arr;
   }, []);
 
-  const activeRowsUniform = useMemo(() => new Float32Array(MAX_BANDS), []);
+  const eqUniform = useMemo(() => new Float32Array(MAX_BANDS), []);
   useEffect(() => {
-    for (let i = 0; i < MAX_BANDS; i++) activeRowsUniform[i] = activeRows[i];
-  }, [activeRows, activeRowsUniform]);
+    for (let i = 0; i < MAX_BANDS; i++) eqUniform[i] = activeRows[i];
+  }, [activeRows, eqUniform]);
 
-  // shader material ref so we can tick time and pointer
-  const matRef = useRef<THREE.ShaderMaterial | null>(null);
+  // 2. Setup Persistent Buffers (The "Painting" Canvas)
+  const renderTargets = useMemo(() => {
+    const params = {
+      format: THREE.RGBAFormat,
+      type: THREE.HalfFloatType,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+    };
+    return [
+      new THREE.WebGLRenderTarget(size.width, size.height, params),
+      new THREE.WebGLRenderTarget(size.width, size.height, params),
+    ];
+  }, [size.width, size.height]);
 
-  useFrame(({ clock }) => {
-    if (!matRef.current) return;
-    matRef.current.uniforms.uTime.value = clock.elapsedTime;
-    matRef.current.uniforms.uPointer.value.copy(pointer.current);
-    matRef.current.uniforms.uLastPointer.value.copy(lastPointer.current);
-    matRef.current.uniforms.uPointerDown.value = pointerDown.current ? 1 : 0;
-    matRef.current.uniforms.uCountdown.value = countdownProgress;
-    matRef.current.uniforms.uActiveRows.value = activeRowsUniform;
+  const readTarget = useRef(0); // Index for ping-ponging
+  const pointer = useRef(new THREE.Vector2(-1, -1));
+  const lastPointer = useRef(new THREE.Vector2(-1, -1));
+  const isDown = useRef(false);
+
+  // 3. Main Shader Materials
+  const simulationMat = useRef<THREE.ShaderMaterial>(null!);
+  const displayMat = useRef<THREE.MeshBasicMaterial>(null!);
+
+  // Orthographic camera for full-screen processing
+  const orthoCamera = useMemo(() => new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), []);
+  const fullScreenQuad = useMemo(() => new THREE.PlaneGeometry(2, 2), []);
+
+  useFrame((state) => {
+    if (!simulationMat.current || !displayMat.current) return;
+
+    const writeTarget = 1 - readTarget.current;
+
+    // Update Uniforms
+    simulationMat.current.uniforms.uTime.value = state.clock.elapsedTime;
+    simulationMat.current.uniforms.uBuffer.value = renderTargets[readTarget.current].texture;
+    simulationMat.current.uniforms.uPointer.value.copy(pointer.current);
+    simulationMat.current.uniforms.uLastPointer.value.copy(lastPointer.current);
+    simulationMat.current.uniforms.uIsDown.value = isDown.current ? 1.0 : 0.0;
+    simulationMat.current.uniforms.uCountdown.value = countdownProgress;
+    simulationMat.current.uniforms.uEQ.value = eqUniform;
+
+    // Pass 1: Draw the painting logic to the 'write' target
+    gl.setRenderTarget(renderTargets[writeTarget]);
+    gl.render(state.scene, orthoCamera); // Scene contains the mesh using simulationMat
+    
+    // Pass 2: Show the result on screen
+    gl.setRenderTarget(null);
+    displayMat.current.map = renderTargets[writeTarget].texture;
+
+    // Swap buffers
+    readTarget.current = writeTarget;
   });
 
-  const onPointerDown = (e: any) => {
-    pointerDown.current = true;
+  // 4. Input Handlers
+  const handlePointer = (e: any) => {
     lastPointer.current.copy(pointer.current);
     pointer.current.copy(e.uv);
-    handleInteraction(e.uv);
-  };
-
-  const onPointerMove = (e: any) => {
-    lastPointer.current.copy(pointer.current);
-    pointer.current.copy(e.uv);
-    if (pointerDown.current || e.pointerType === 'touch' || e.buttons > 0) {
-      handleInteraction(e.uv);
-    }
-  };
-
-  const onPointerUp = () => {
-    pointerDown.current = false;
-    pointer.current.set(-10, -10);
-    lastPointer.current.set(-10, -10);
+    if (isDown.current || e.buttons > 0) handleInteraction(e.uv);
   };
 
   return (
-    <mesh
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-    >
-      <planeGeometry args={[2, 2]} />
-      <shaderMaterial
-        ref={matRef}
-        uniforms={{
-          uTime: { value: 0 },
-          uPointer: { value: new THREE.Vector2(-10, -10) },
-          uLastPointer: { value: new THREE.Vector2(-10, -10) },
-          uPointerDown: { value: 0 },
-          uCountdown: { value: 0 },
-          uPalette: { value: palette },
-          uActiveRows: { value: activeRowsUniform },
-          uResolution: { value: new THREE.Vector2(size.width, size.height) },
-        }}
-        vertexShader={/* glsl */ `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = vec4(position.xy, 0.0, 1.0);
-          }
-        `}
-        fragmentShader={/* glsl */ `
-          precision highp float;
+    <group>
+      {/* Simulation Plane (Hidden Pass) */}
+      <mesh frustumCulled={false}>
+        <primitive object={fullScreenQuad} />
+        <shaderMaterial
+          ref={simulationMat}
+          uniforms={{
+            uTime: { value: 0 },
+            uBuffer: { value: null },
+            uPointer: { value: new THREE.Vector2(-1, -1) },
+            uLastPointer: { value: new THREE.Vector2(-1, -1) },
+            uIsDown: { value: 0 },
+            uPalette: { value: palette },
+            uEQ: { value: eqUniform },
+            uCountdown: { value: 0 },
+            uRes: { value: new THREE.Vector2(size.width, size.height) },
+          }}
+          vertexShader={`
+            varying vec2 vUv;
+            void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+          `}
+          fragmentShader={`
+            precision highp float;
+            uniform float uTime, uIsDown, uCountdown;
+            uniform vec2 uPointer, uLastPointer, uRes;
+            uniform sampler2D uBuffer;
+            uniform float uPalette[108], uEQ[36];
+            varying vec2 vUv;
 
-          #define MAX_BANDS 36
-          #define MAX_ROWS 36
-
-          uniform float uTime;
-          uniform vec2 uPointer;
-          uniform vec2 uLastPointer;
-          uniform float uPointerDown;
-          uniform float uCountdown;
-          uniform float uPalette[MAX_BANDS * 3];
-          uniform float uActiveRows[MAX_BANDS];
-          uniform vec2 uResolution;
-
-          varying vec2 vUv;
-
-          vec3 bandColor(float band) {
-            int i = int(band) * 3;
-            return vec3(uPalette[i], uPalette[i+1], uPalette[i+2]);
-          }
-
-          vec3 materialize(vec3 base, float y) {
-            if (y < 0.33) {
-              float t = y / 0.33;
-              return base * vec3(0.55, 0.8, 1.1) * mix(0.35, 0.65, t);
-            } else if (y < 0.66) {
-              float t = (y - 0.33) / 0.33;
-              float g = dot(base, vec3(0.299, 0.587, 0.114));
-              vec3 gray = vec3(g);
-              return mix(gray, base, 0.25) * mix(0.55, 0.85, t);
-            } else {
-              float t = (y - 0.66) / 0.34;
-              return base * vec3(1.25, 0.85, 0.35) * mix(0.8, 1.8, t);
+            vec3 getBandColor(float x) {
+              int i = int(clamp(x * 36.0, 0.0, 35.0)) * 3;
+              return vec3(uPalette[i], uPalette[i+1], uPalette[i+2]);
             }
-          }
 
-          vec2 curl(vec2 p) {
-            float s = sin(p.x * 6.0 + uTime * 1.7) + cos(p.y * 6.5 - uTime * 1.3);
-            float c = cos(p.x * 5.2 - uTime * 1.1) - sin(p.y * 5.8 + uTime * 1.5);
-            return vec2(s, c);
-          }
+            void main() {
+              vec2 uv = vUv;
+              vec3 prev = texture2D(uBuffer, uv).rgb;
+              
+              // 1. Persistence & Rework-Fading
+              float bandX = floor(uv.x * 36.0);
+              float activeRow = uEQ[int(bandX)];
+              float fade = (activeRow >= 0.0) ? 0.985 : 0.994;
+              prev *= fade;
 
-          void main() {
-            vec2 uv = vUv;
-
-            // base background: dark teal circuitry hint
-            vec3 color = vec3(0.02, 0.06, 0.08);
-            color += 0.08 * sin(vec3(uv.x * 12.0, uv.y * 18.0, (uv.x+uv.y)*6.0));
-
-            vec2 aspect = vec2(uResolution.x / min(uResolution.x, uResolution.y),
-                               uResolution.y / min(uResolution.x, uResolution.y));
-            float d = length((uv - uPointer) * aspect);
-            vec2 v = (uPointer - uLastPointer) * aspect;
-            float speed = clamp(length(v) * 60.0, 0.0, 2.0);
-
-            float band = clamp(floor(uv.x * float(MAX_BANDS)), 0.0, float(MAX_BANDS - 1));
-            vec3 base = bandColor(band);
-
-            // pointer trail
-            if (uPointerDown > 0.5 && uPointer.x > -1.0) {
-              vec2 w = curl(uv * 2.0) * (0.002 + speed * 0.004);
-              float radius = mix(0.08, 0.03, clamp(speed, 0.0, 1.0));
-              float core = smoothstep(radius, 0.0, length((uv + w - uPointer) * aspect));
-
-              vec3 ink = materialize(base, uv.y);
-              color += ink * core * (0.7 + speed * 0.8);
-
-              // ember sparkle in upper third
-              if (uv.y > 0.66) {
-                float spark = pow(max(0.0, sin((uv.x + uv.y) * 120.0 + uTime * 18.0)), 20.0);
-                color += ink * spark * 0.4 * core;
+              // 2. The Brush (Wake)
+              float dist = length((uv - uPointer) * (uRes / min(uRes.x, uRes.y)));
+              float brush = smoothstep(0.08, 0.0, dist);
+              
+              if(uIsDown > 0.5) {
+                vec3 base = getBandColor(uv.x);
+                vec3 ink = base;
+                
+                if(uv.y < 0.33) ink *= vec3(0.5, 0.8, 1.2); // Water
+                else if(uv.y > 0.66) ink *= vec3(1.5, 0.9, 0.4); // Fire
+                
+                // Turbulent turbulence
+                float noise = sin(uv.x * 50.0 + uTime * 10.0) * cos(uv.y * 50.0 + uTime * 10.0);
+                prev += ink * brush * 0.15 * (1.0 + noise * 0.2);
               }
-            }
 
-            // countdown: energize + thin EQ lines
-            if (uCountdown > 0.0) {
-              float energize = 1.0 + uCountdown * 0.35;
-              color *= energize;
-
-              int bandIdx = int(band);
-              float row = uActiveRows[bandIdx];
-              if (row >= 0.0) {
-                float rowNorm = clamp(row / float(MAX_ROWS), 0.0, 1.0);
-                float line = smoothstep(rowNorm - 0.005, rowNorm, uv.y) *
-                             smoothstep(rowNorm + 0.005, rowNorm, uv.y);
-                color += materialize(base, rowNorm) * line * (0.6 * uCountdown);
+              // 3. Countdown Reveal (Subtle EQ Lines)
+              if(uCountdown > 0.0 && activeRow >= 0.0) {
+                float rowY = activeRow / 36.0;
+                float line = smoothstep(0.005, 0.0, abs(uv.y - rowY));
+                prev += getBandColor(uv.x) * line * uCountdown * 0.4;
               }
+
+              gl_FragColor = vec4(prev, 1.0);
             }
+          `}
+        />
+      </mesh>
 
-            color = clamp(color, 0.0, 1.2);
-            color = color / (1.0 + color);
-            color = pow(color, vec3(0.4545));
-
-            gl_FragColor = vec4(color, 1.0);
-          }
-        `}
-      />
-    </mesh>
+      {/* Visible Plane */}
+      <mesh
+        onPointerDown={(e) => { isDown.current = true; handlePointer(e); }}
+        onPointerMove={handlePointer}
+        onPointerUp={() => { isDown.current = false; pointer.current.set(-1, -1); }}
+      >
+        <planeGeometry args={[2, 2]} />
+        <meshBasicMaterial ref={displayMat} transparent />
+      </mesh>
+    </group>
   );
 };
