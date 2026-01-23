@@ -25,12 +25,10 @@ const InstrumentPage: React.FC = () => {
   const completedRef = useRef(false);
   const requestRef = useRef<number | null>(null);
 
-  // Sync state to navigate
   useEffect(() => {
     if (!state.file && !state.audioBuffer) navigate('/');
   }, [state.file, state.audioBuffer, navigate]);
 
-  // Handle Decoding
   useEffect(() => {
     const decodeAudio = async () => {
       if (state.file && !state.audioBuffer && !isDecoding) {
@@ -47,7 +45,6 @@ const InstrumentPage: React.FC = () => {
     decodeAudio();
   }, [state.file, state.audioBuffer, isDecoding, setAudioBuffer]);
 
-  // Audio Callback
   const onTriggerAudio = useCallback((x: number, y: number) => {
     const bandIndex = Math.floor(x * MAX_BANDS);
     const rowIndex = Math.floor(y * MAX_ROWS);
@@ -65,27 +62,19 @@ const InstrumentPage: React.FC = () => {
   const handleRitualComplete = useCallback(() => {
     if (completedRef.current) return;
     completedRef.current = true;
-    if (requestRef.current) cancelAnimationFrame(requestRef.current);
-
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (canvas) captureSoundPrint(canvas.toDataURL('image/png'));
-
     const blob = audioEngine.getRecordingBlob();
     if (blob) saveRecording(blob, activeRows);
-
-    trackEvent('ritual_complete', { durationPlayed: (Date.now() - startTimeRef.current) / 1000 });
     navigate('/result');
-  }, [activeRows, captureSoundPrint, saveRecording, navigate, trackEvent]);
+  }, [activeRows, captureSoundPrint, saveRecording, navigate]);
 
   const updateLoop = useCallback(() => {
     if (!startTimeRef.current) return;
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
     const duration = state.audioBuffer?.duration || 0;
     const remaining = Math.max(0, duration - elapsed);
-
-    if (remaining <= 36) { // 36 seconds countdown
-      setCountdownProgress(Math.min(1, (36 - remaining) / 36));
-    }
+    if (remaining <= 36) setCountdownProgress(Math.min(1, (36 - remaining) / 36));
     requestRef.current = requestAnimationFrame(updateLoop);
   }, [state.audioBuffer]);
 
@@ -95,8 +84,7 @@ const InstrumentPage: React.FC = () => {
       await audioEngine.init();
       const canvas = document.querySelector('canvas');
       const videoStream = canvas ? (canvas as any).captureStream(30) : null;
-
-      audioEngine.startPlayback(state.audioBuffer, videoStream, () => handleRitualComplete());
+      audioEngine.startPlayback(state.audioBuffer, videoStream, handleRitualComplete);
       setIsPlaying(true);
       startTimeRef.current = Date.now();
       requestRef.current = requestAnimationFrame(updateLoop);
@@ -115,7 +103,12 @@ const InstrumentPage: React.FC = () => {
       )}
 
       <div style={{ width: '100%', height: '100%', opacity: isPlaying ? 1 : 0, transition: 'opacity 1.5s' }}>
-        <Canvas orthographic gl={{ preserveDrawingBuffer: true }} style={{ position: 'absolute', inset: 0 }}>
+        <Canvas 
+          orthographic 
+          camera={{ left: -1, right: 1, top: 1, bottom: -1, near: 0, far: 1 }}
+          gl={{ preserveDrawingBuffer: true, antialias: false }} 
+          style={{ position: 'absolute', inset: 0 }}
+        >
           <FlowFieldInstrument 
             onTriggerAudio={onTriggerAudio}
             countdownProgress={countdownProgress}
