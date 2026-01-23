@@ -1,61 +1,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
-import type { ThreeEvent } from '@react-three/fiber';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
-import { BAND_COLORS } from '../config/bandColors';
 import audioEngine from '../audio/AudioEngine';
-import { BandColumn } from '../components/BandColumn';
-import { Ribbon } from '../components/Ribbon';
+import { FlowFieldInstrument } from '../components/FlowFieldInstrument';
 
 const MAX_BANDS = 36;
 const MAX_ROWS = 36;
 const RITUAL_DURATION_SEC = 36; 
-
-const InstrumentScene: React.FC<{
-  activeRows: number[];
-  handleInteraction: (uv: THREE.Vector2) => void;
-  showRibbon: boolean;
-}> = ({ activeRows, handleInteraction, showRibbon }) => {
-  return (
-    <group>
-      <mesh
-        position={[0, 0, 0.1]}
-        visible={false}
-        onPointerDown={(e: ThreeEvent<PointerEvent>) => handleInteraction(e.uv!)}
-        onPointerMove={(e: ThreeEvent<PointerEvent>) => {
-          if (e.buttons > 0 || e.pointerType === 'touch') {
-            handleInteraction(e.uv!);
-          }
-        }}
-      >
-        <planeGeometry args={[2, 2]} />
-        <meshBasicMaterial color="red" wireframe />
-      </mesh>
-
-      {BAND_COLORS.map((color, index) => (
-        <BandColumn
-          key={index}
-          index={index}
-          colorData={color}
-          activeRow={activeRows[index]}
-          maxRows={MAX_ROWS}
-          maxBands={MAX_BANDS}
-        />
-      ))}
-
-      <Ribbon
-        finalEQState={activeRows}
-        maxBands={MAX_BANDS}
-        maxRows={MAX_ROWS}
-        isVisible={showRibbon}
-      />
-    </group>
-  );
-};
 
 const InstrumentPage: React.FC = () => {
   const navigate = useNavigate();
@@ -65,8 +20,7 @@ const InstrumentPage: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isIntroPlaying, setIsIntroPlaying] = useState(false); 
   const [activeRows, setActiveRows] = useState<number[]>(new Array(MAX_BANDS).fill(-1));
-  const [showRibbon, setShowRibbon] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [countdownProgress, setCountdownProgress] = useState(0);
   const [isDecoding, setIsDecoding] = useState(false);
 
   const requestRef = useRef<number | null>(null);
@@ -146,13 +100,14 @@ const InstrumentPage: React.FC = () => {
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
     const duration = state.audioBuffer?.duration || 0;
     const remaining = Math.max(0, duration - elapsed);
-    setTimeLeft(remaining);
 
-    if (remaining <= RITUAL_DURATION_SEC && !showRibbon) {
-      setShowRibbon(true);
+    // Convert remaining time to 0-1 progress for our visual countdown
+    if(remaining <= RITUAL_DURATION_SEC) {
+      setCountdownProgress(Math.min(1, (RITUAL_DURATION_SEC - remaining) / RITUAL_DURATION_SEC));
     }
+
     requestRef.current = requestAnimationFrame(updateLoop);
-  }, [state.audioBuffer, showRibbon]);
+  }, [state.audioBuffer]);
 
   const beginActualPlayback = async () => {
     if (!state.audioBuffer) return;
@@ -228,12 +183,12 @@ const InstrumentPage: React.FC = () => {
           style={{ touchAction: 'none' }}
         >
           <color attach="background" args={['#050810']} />
-          <ambientLight intensity={0.2} />
-          <pointLight position={[10, 10, 10]} intensity={0.5} />
-          <InstrumentScene
+          <ambientLight intensity={0.1 + (countdownProgress * 0.3)} />
+
+          <FlowFieldInstrument
             activeRows={activeRows}
             handleInteraction={handleInteraction}
-            showRibbon={showRibbon}
+            countdownProgress={countdownProgress}
           />
         </Canvas>
       </div>
@@ -279,11 +234,6 @@ const InstrumentPage: React.FC = () => {
         </div>
       )}
 
-      {isPlaying && (
-        <div style={{ position: 'absolute', bottom: '20px', right: '20px', fontFamily: 'monospace', color: timeLeft <= RITUAL_DURATION_SEC ? '#FF003C' : '#555' }}>
-          {timeLeft.toFixed(1)}s
-        </div>
-      )}
     </div>
   );
 };
