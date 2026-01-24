@@ -4,41 +4,11 @@ import { useNavigate } from 'react-router-dom';
 
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
-import { BAND_COLORS } from '../config/bandColors';
 import audioEngine from '../audio/AudioEngine';
-import { BandColumn } from '../components/BandColumn';
-import { Ribbon } from '../components/Ribbon';
+import { FlowFieldInstrument } from '../components/FlowFieldInstrument';
 
 const MAX_BANDS = 36;
 const MAX_ROWS = 36;
-const RITUAL_DURATION_SEC = 36;
-
-const InstrumentScene: React.FC<{
-  activeRows: number[];
-  showRibbon: boolean;
-}> = ({ activeRows, showRibbon }) => {
-  return (
-    <group>
-      {BAND_COLORS.map((color, index) => (
-        <BandColumn
-          key={index}
-          index={index}
-          colorData={color}
-          activeRow={activeRows[index]}
-          maxRows={MAX_ROWS}
-          maxBands={MAX_BANDS}
-        />
-      ))}
-
-      <Ribbon
-        finalEQState={activeRows}
-        maxBands={MAX_BANDS}
-        maxRows={MAX_ROWS}
-        isVisible={showRibbon}
-      />
-    </group>
-  );
-};
 
 const InstrumentPage: React.FC = () => {
   const navigate = useNavigate();
@@ -48,10 +18,9 @@ const InstrumentPage: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isIntroPlaying, setIsIntroPlaying] = useState(false);
   const [activeRows, setActiveRows] = useState<number[]>(new Array(MAX_BANDS).fill(-1));
-  const [showRibbon, setShowRibbon] = useState(false);
   const [isDecoding, setIsDecoding] = useState(false);
 
-  // Simple finger tracker for immediate feedback
+  // Pointer state 0..1
   const [pointer01, setPointer01] = useState<{ x: number; y: number; down: boolean }>({
     x: 0.5,
     y: 0.5,
@@ -63,12 +32,14 @@ const InstrumentPage: React.FC = () => {
   const startTimeRef = useRef<number>(0);
   const completedRef = useRef(false);
 
+  // -- Lifecycle: Redirect if no audio --
   useEffect(() => {
     if (!state.file && !state.audioBuffer) {
       navigate('/');
     }
   }, [state.file, state.audioBuffer, navigate]);
 
+  // -- Lifecycle: Decode Audio --
   useEffect(() => {
     const decodeAudio = async () => {
       if (state.file && !state.audioBuffer && !isDecoding) {
@@ -90,7 +61,7 @@ const InstrumentPage: React.FC = () => {
     decodeAudio();
   }, [state.file, state.audioBuffer, isDecoding, setAudioBuffer, trackEvent]);
 
-  // FULL-SCREEN mapping: x=low->high, y=silent->full
+  // -- Audio Interaction Logic --
   const applyInteraction01 = useCallback(
     (x01: number, y01: number) => {
       if (!isPlaying) return;
@@ -110,12 +81,14 @@ const InstrumentPage: React.FC = () => {
     [isPlaying]
   );
 
+  // -- Ritual Completion --
   const handleRitualComplete = useCallback(() => {
     if (completedRef.current) return;
     completedRef.current = true;
 
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
 
+    // Capture SoundPrint
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (canvas) {
       const dataUrl = canvas.toDataURL('image/png');
@@ -134,27 +107,27 @@ const InstrumentPage: React.FC = () => {
     navigate('/result');
   }, [activeRows, captureSoundPrint, saveRecording, navigate, trackEvent]);
 
+  // -- Game Loop --
   const updateLoop = useCallback(() => {
     if (!startTimeRef.current) return;
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
     const duration = state.audioBuffer?.duration || 0;
-    const remaining = Math.max(0, duration - elapsed);
-
-    // Show ribbon for final 36s (your pacing cue)
-    if (remaining <= RITUAL_DURATION_SEC && !showRibbon) {
-      setShowRibbon(true);
+    
+    // Safety check if audio ends naturally
+    if (duration > 0 && elapsed > duration + 1) {
+       handleRitualComplete();
     }
 
     requestRef.current = requestAnimationFrame(updateLoop);
-  }, [state.audioBuffer, showRibbon]);
+  }, [state.audioBuffer, handleRitualComplete]);
 
+  // -- Start Sequence --
   const beginActualPlayback = async () => {
     if (!state.audioBuffer) return;
     try {
       completedRef.current = false;
       await audioEngine.init();
 
-      // Capture canvas stream for video recording
       const canvas = document.querySelector('canvas');
       const videoStream = canvas ? (canvas as any).captureStream(30) : null;
 
@@ -163,7 +136,6 @@ const InstrumentPage: React.FC = () => {
       });
 
       setIsPlaying(true);
-      setShowRibbon(false);
       startTimeRef.current = Date.now();
       requestRef.current = requestAnimationFrame(updateLoop);
       trackEvent('ritual_start');
@@ -185,7 +157,7 @@ const InstrumentPage: React.FC = () => {
     };
   }, []);
 
-  // DOM pointer → normalized coords across ANY screen size
+  // -- Input Normalization --
   const updateFromPointerEvent = (e: React.PointerEvent) => {
     const el = stageRef.current;
     if (!el) return;
@@ -237,36 +209,38 @@ const InstrumentPage: React.FC = () => {
         />
       )}
 
-      {/* ORIGINAL VISUALS RESTORED */}
-      <div style={{ width: '100%', height: '100%', opacity: isPlaying ? 1 : 0, transition: 'opacity 1.5s ease-in' }}>
+      {/* R3F CANVAS - VISUAL INSTRUMENT */}
+      <div style={{ width: '100%', height: '100%', opacity: isPlaying ? 1 : 0, transition: 'opacity 1s ease-in' }}>
         <Canvas
           dpr={[1, 2]}
-          gl={{ preserveDrawingBuffer: true }}
-          camera={{ position: [0, 0, 1.4], fov: 60 }}
+          gl={{ 
+            preserveDrawingBuffer: true,
+            antialias: false,
+            alpha: false
+          }}
+          orthographic 
+          camera={{ zoom: 1, position: [0, 0, 1] }}
           style={{ position: 'absolute', inset: 0 }}
         >
-          <color attach="background" args={['#050810']} />
-          <ambientLight intensity={0.2} />
-          <pointLight position={[10, 10, 10]} intensity={0.5} />
-          <InstrumentScene activeRows={activeRows} showRibbon={showRibbon} />
+          <FlowFieldInstrument pointer01={pointer01} countdownProgress={0} />
         </Canvas>
       </div>
 
-      {/* FULL-SCREEN CONTROL LAYER (sound improvements kept) */}
+      {/* FULL-SCREEN INPUT LAYER */}
       {isPlaying && !isIntroPlaying && (
         <div
-          style={{ position: 'absolute', inset: 0, zIndex: 10 }}
+          style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'crosshair' }}
           onPointerDown={(e) => {
             (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-            setPointer01(prev => ({ ...prev, down: true }));
-            updateFromPointerEvent(e);
-
-            // apply immediately
             const el = stageRef.current!;
             const r = el.getBoundingClientRect();
             const x01 = (e.clientX - r.left) / r.width;
             const y01 = 1 - (e.clientY - r.top) / r.height;
-            applyInteraction01(Math.min(1, Math.max(0, x01)), Math.min(1, Math.max(0, y01)));
+            const cx = Math.min(1, Math.max(0, x01));
+            const cy = Math.min(1, Math.max(0, y01));
+            
+            setPointer01({ x: cx, y: cy, down: true });
+            applyInteraction01(cx, cy);
           }}
           onPointerMove={updateFromPointerEvent}
           onPointerUp={() => setPointer01(prev => ({ ...prev, down: false }))}
@@ -274,29 +248,7 @@ const InstrumentPage: React.FC = () => {
         />
       )}
 
-      {/* SIMPLE FINGER TRACKER DOT (guaranteed feedback) */}
-      {isPlaying && (
-        <div
-          style={{
-            position: 'absolute',
-            left: `${pointer01.x * 100}%`,
-            top: `${(1 - pointer01.y) * 100}%`,
-            width: pointer01.down ? 44 : 28,
-            height: pointer01.down ? 44 : 28,
-            transform: 'translate(-50%, -50%)',
-            borderRadius: '50%',
-            background: pointer01.down ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.12)',
-            boxShadow: pointer01.down
-              ? '0 0 22px rgba(0,255,160,0.45), 0 0 60px rgba(0,140,255,0.25)'
-              : '0 0 14px rgba(0,255,160,0.25)',
-            pointerEvents: 'none',
-            zIndex: 20,
-            transition: 'width 80ms linear, height 80ms linear, box-shadow 80ms linear, background 80ms linear',
-          }}
-        />
-      )}
-
-      {/* Launch screen unchanged */}
+      {/* LAUNCH SCREEN */}
       {!isPlaying && !isIntroPlaying && (
         <div
           style={{
