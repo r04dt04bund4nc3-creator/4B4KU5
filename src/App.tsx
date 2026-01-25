@@ -1,7 +1,7 @@
 // src/App.tsx
 import { useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import { AppProvider, useApp } from './state/AppContext';
+import { Routes, Route } from 'react-router-dom'; // Removed unused useNavigate
+import { AppProvider } from './state/AppContext';   // Removed unused useApp
 import { useAnalytics } from './hooks/useAnalytics';
 
 import { Shell } from './components/layout/Shell';
@@ -10,11 +10,8 @@ import InstrumentPage from './pages/InstrumentPage';
 import ResultPage from './pages/ResultPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 
-// Runs on every page, after AppProvider is mounted
+// FIXED: Removed unused hooks and variables
 function GlobalGuards() {
-  const { auth } = useApp();
-  const navigate = useNavigate();
-
   // Clean up any OAuth error params so they don't persist
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -27,17 +24,6 @@ function GlobalGuards() {
       window.history.replaceState({}, '', url.origin + url.pathname);
     }
   }, []);
-
-  // If we just returned from OAuth, force navigation to /result
-  useEffect(() => {
-    if (auth.isLoading) return;
-
-    const flag = sessionStorage.getItem('post-auth-redirect');
-    if (flag === 'result' && auth.user) {
-      sessionStorage.removeItem('post-auth-redirect');
-      navigate('/result', { replace: true });
-    }
-  }, [auth.isLoading, auth.user, navigate]);
 
   return null;
 }
@@ -69,11 +55,7 @@ function App() {
             </Shell>
           }
         />
-        <Route
-          path="/result"
-          element={<ResultPage />}
-        />
-        {/* OAuth returns here; we finalize session then bounce to /result */}
+        <Route path="/result" element={<ResultPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
       </Routes>
     </AppProvider>

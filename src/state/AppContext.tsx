@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type { Session, AuthError } from '@supabase/supabase-js';
 
+// ... (Interfaces and initial states are unchanged) ...
+
 interface AudioState {
   file: File | null;
   audioBuffer: AudioBuffer | null;
@@ -20,7 +22,6 @@ interface RitualState {
   soundPrintDataUrl: string | null;
   finalEQState: number[];
   isRecording: boolean;
-  shouldRedirectToResult: boolean; // New flag for client-side redirection
 }
 
 interface AuthState {
@@ -50,7 +51,6 @@ interface AppContextType {
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   savePerformance: (gestureData: any, trackName: string, trackHash: string) => Promise<void>;
-  clearRedirectFlag: () => void;
 }
 
 const initialAudioState: AudioState = {
@@ -69,7 +69,6 @@ const initialRitualState: RitualState = {
   soundPrintDataUrl: null,
   finalEQState: [],
   isRecording: false,
-  shouldRedirectToResult: false,
 };
 
 const initialAuthState: AuthState = {
@@ -78,9 +77,10 @@ const initialAuthState: AuthState = {
   error: null,
 };
 
+
 const AppContext = createContext<AppContextType | null>(null);
 
-// Helpers to persist/restore the ephemeral state across OAuth
+// ... (blobToDataURL and dataURLToBlob helpers are unchanged) ...
 const blobToDataURL = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -104,7 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ritual, setRitual] = useState<RitualState>(initialRitualState);
   const [auth, setAuth] = useState<AuthState>(initialAuthState);
 
-  // Restore ephemeral post-ritual state if we come back from OAuth
+  // ... (All other functions from restorePostAuthState to reset are unchanged) ...
   const restorePostAuthState = useCallback(() => {
     try {
       const sp = sessionStorage.getItem('g4m3_sound_print');
@@ -118,24 +118,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const fileName = sessionStorage.getItem('g4m3_filename');
       if (fileName) {
+        // Placeholder file for naming downloads; no data attached (not needed)
         const file = new File([], fileName);
         setAudio(prev => ({ ...prev, file }));
       }
       const eq = sessionStorage.getItem('g4m3_final_eq');
       if (eq) {
         setRitual(prev => ({ ...prev, finalEQState: JSON.parse(eq) }));
-      }
-      
-      // Check if we need to redirect
-      const redirectTarget = sessionStorage.getItem('post-auth-redirect');
-      if (redirectTarget === 'result') {
-        setRitual(prev => ({ ...prev, shouldRedirectToResult: true }));
-        sessionStorage.removeItem('post-auth-redirect');
-        
-        // Clean up the URL hash so the user doesn't see access_token=...
-        if (window.location.hash.includes('access_token')) {
-            window.history.replaceState(null, '', window.location.pathname);
-        }
       }
     } catch (e) {
       console.warn('Post-auth restore failed:', e);
@@ -196,7 +185,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       phase: 'complete',
     }));
     try {
-      if (dataUrl) sessionStorage.setItem('g4m3_sound_print', dataUrl);
+      if (dataUrl) {
+        sessionStorage.setItem('g4m3_sound_print', dataUrl);
+      }
     } catch (e) {
       console.warn('Persist sound print failed:', e);
     }
@@ -242,15 +233,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const clearRedirectFlag = useCallback(() => {
-    setRitual(prev => ({ ...prev, shouldRedirectToResult: false }));
-  }, []);
-
-  // Important: Use Origin (Root) to avoid sub-path 404s in dev environments
-  const getRedirectUrl = () => {
-    return window.location.origin;
-  };
-
+  // Save ephemeral state so we can restore it after OAuth full-page redirect
   const persistBeforeOAuth = useCallback(async () => {
     try {
       if (audio.recordingBlob) {
@@ -266,19 +249,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (ritual.finalEQState?.length) {
         sessionStorage.setItem('g4m3_final_eq', JSON.stringify(ritual.finalEQState));
       }
+      // This is now handled by the callback page, but keeping it is harmless
       sessionStorage.setItem('post-auth-redirect', 'result');
     } catch (e) {
       console.warn('Persist before OAuth failed:', e);
     }
   }, [audio.recordingBlob, audio.file?.name, ritual.soundPrintDataUrl, ritual.finalEQState]);
 
+  // FIXED: The signIn methods now point to the correct callback URL
   const signInWithDiscord = useCallback(async () => {
     try {
       setAuth(prev => ({ ...prev, error: null }));
       await persistBeforeOAuth();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'discord',
-        options: { redirectTo: getRedirectUrl() },
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
       if (error) throw error;
     } catch (err: any) {
@@ -292,7 +277,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await persistBeforeOAuth();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: getRedirectUrl() },
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
       if (error) throw error;
     } catch (err: any) {
@@ -300,6 +285,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [persistBeforeOAuth]);
 
+  // ... (signInWithEmail, signOut, savePerformance, and return are unchanged) ...
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     setAuth(prev => ({ ...prev, error: null }));
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -335,7 +321,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [ritual.soundPrintDataUrl],
   );
-
+  
   return (
     <AppContext.Provider
       value={{
@@ -359,24 +345,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         signInWithEmail,
         signOut,
         savePerformance,
-        clearRedirectFlag,
       }}
     >
       {children}
     </AppContext.Provider>
   );
-}
-
-// Optional: Custom Hook for components to auto-redirect
-export function useAuthRedirect(navigate: (path: string) => void) {
-  const { ritual, clearRedirectFlag } = useContext(AppContext)!;
-  
-  useEffect(() => {
-    if (ritual.shouldRedirectToResult) {
-      clearRedirectFlag();
-      navigate('/result');
-    }
-  }, [ritual.shouldRedirectToResult, clearRedirectFlag, navigate]);
 }
 
 export function useApp() {
