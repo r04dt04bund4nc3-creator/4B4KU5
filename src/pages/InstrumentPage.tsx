@@ -1,3 +1,4 @@
+// src/pages/InstrumentPage.tsx
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useNavigate } from 'react-router-dom';
@@ -78,7 +79,7 @@ const InstrumentPage: React.FC = () => {
 
       audioEngine.setBandGain(bandIndex, rowIndex);
     },
-    [isPlaying]
+    [isPlaying],
   );
 
   // -- Ritual Completion --
@@ -88,16 +89,20 @@ const InstrumentPage: React.FC = () => {
 
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
 
-    // Capture SoundPrint
+    // Capture SoundPrint from the R3F canvas (the one with preserveDrawingBuffer=true)
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (canvas) {
-      const dataUrl = canvas.toDataURL('image/png');
-      captureSoundPrint(dataUrl);
+      try {
+        const dataUrl = canvas.toDataURL('image/png');
+        captureSoundPrint(dataUrl);
+      } catch (e) {
+        console.warn('Sound print capture failed:', e);
+      }
     }
 
-    const blob = audioEngine.getRecordingBlob();
-    if (blob) {
-      saveRecording(blob, activeRows);
+    const recordingBlob = audioEngine.getRecordingBlob();
+    if (recordingBlob) {
+      saveRecording(recordingBlob, activeRows);
     }
 
     trackEvent('ritual_complete', {
@@ -112,10 +117,11 @@ const InstrumentPage: React.FC = () => {
     if (!startTimeRef.current) return;
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
     const duration = state.audioBuffer?.duration || 0;
-    
+
     // Safety check if audio ends naturally
     if (duration > 0 && elapsed > duration + 1) {
-       handleRitualComplete();
+      handleRitualComplete();
+      return;
     }
 
     requestRef.current = requestAnimationFrame(updateLoop);
@@ -129,9 +135,13 @@ const InstrumentPage: React.FC = () => {
       await audioEngine.init();
 
       const canvas = document.querySelector('canvas');
-      const videoStream = canvas ? (canvas as any).captureStream(30) : null;
+      const videoStream = canvas ? (canvas as HTMLCanvasElement).captureStream(30) : null;
 
-      audioEngine.startPlayback(state.audioBuffer, videoStream, () => {
+      // Important: we now get the final blob in the callback once MediaRecorder has stopped
+      audioEngine.startPlayback(state.audioBuffer, videoStream, blob => {
+        if (blob) {
+          saveRecording(blob, activeRows);
+        }
         handleRitualComplete();
       });
 
@@ -210,19 +220,40 @@ const InstrumentPage: React.FC = () => {
       )}
 
       {/* R3F CANVAS - VISUAL INSTRUMENT */}
-      <div style={{ width: '100%', height: '100%', opacity: isPlaying ? 1 : 0, transition: 'opacity 1s ease-in' }}>
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          opacity: isPlaying ? 1 : 0,
+          transition: 'opacity 1s ease-in',
+        }}
+      >
         <Canvas
           dpr={[1, 2]}
-          gl={{ 
+          gl={{
             preserveDrawingBuffer: true,
             antialias: false,
-            alpha: false
+            alpha: false,
           }}
-          orthographic 
+          orthographic
           camera={{ zoom: 1, position: [0, 0, 1] }}
           style={{ position: 'absolute', inset: 0 }}
         >
-          <FlowFieldInstrument pointer01={pointer01} countdownProgress={0} />
+          <FlowFieldInstrument
+            pointer01={pointer01}
+            countdownProgress={0}
+            // Visual parameter defaults – tweak here tomorrow
+            simDriftStrength={0.2}
+            simAdvectStrength={0.01}
+            simBlurAmount={0.1}
+            simDecayLow={0.995}
+            simDecayHigh={0.985}
+            sparkCoreRadius={0.01}
+            sparkAuraRadius={0.03}
+            sparkCoreStrength={0.7}
+            sparkAuraStrength={0.1}
+            powderStrength={0.25}
+          />
         </Canvas>
       </div>
 
@@ -230,7 +261,7 @@ const InstrumentPage: React.FC = () => {
       {isPlaying && !isIntroPlaying && (
         <div
           style={{ position: 'absolute', inset: 0, zIndex: 10, cursor: 'crosshair' }}
-          onPointerDown={(e) => {
+          onPointerDown={e => {
             (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
             const el = stageRef.current!;
             const r = el.getBoundingClientRect();
@@ -238,7 +269,7 @@ const InstrumentPage: React.FC = () => {
             const y01 = 1 - (e.clientY - r.top) / r.height;
             const cx = Math.min(1, Math.max(0, x01));
             const cy = Math.min(1, Math.max(0, y01));
-            
+
             setPointer01({ x: cx, y: cy, down: true });
             applyInteraction01(cx, cy);
           }}
