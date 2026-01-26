@@ -1,3 +1,4 @@
+// src/pages/ResultPage.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
@@ -8,7 +9,6 @@ import loggedOutSkin from '../assets/result-logged-out.webp';
 import loggedInSkin from '../assets/result-logged-in.webp';
 import './ResultPage.css';
 
-/** -------- IndexedDB helpers (for big video blobs across OAuth redirects) -------- */
 const DB_NAME = 'G4BKU5_DB';
 const STORE_NAME = 'blobs';
 const DB_VERSION = 1;
@@ -66,7 +66,6 @@ async function deleteBlob(key: string): Promise<void> {
 const RECOVERY_BLOB_KEY = 'res_recovery_blob';
 const RECOVERY_PRINT_KEY = 'res_recovery_print';
 
-/** -------- Filename helpers -------- */
 function sanitizeBaseName(name: string): string {
   return name
     .replace(/\.[^/.]+$/, '')
@@ -93,7 +92,6 @@ function buildSessionFileName(file?: File | null): string {
   return `${prefix}${stamp}.webm`;
 }
 
-/** -------- Component -------- */
 const ResultPage: React.FC = () => {
   const navigate = useNavigate();
   const { state, ritual, auth, signOut, reset } = useApp();
@@ -118,21 +116,21 @@ const ResultPage: React.FC = () => {
     run();
   }, []);
 
+  // If we ever recover a blob and state.recordingBlob is empty,
+  // prefer to use the recovered one for downloads.
+  const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
+
   const getRedirectUrl = () => window.location.origin + '/auth/callback';
 
   const safePersistAndRedirect = useCallback(
     async (provider: 'discord') => {
       trackEvent('social_login_attempt', { provider });
-
-      // Tell callback where to return
       sessionStorage.setItem('post-auth-redirect', '/result');
 
-      // Persist sound print
       if (ritual.soundPrintDataUrl) {
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
       }
 
-      // Persist recorded session (video/webm) via IndexedDB
       if (state.recordingBlob) {
         try {
           await saveBlob(RECOVERY_BLOB_KEY, state.recordingBlob);
@@ -150,14 +148,12 @@ const ResultPage: React.FC = () => {
   );
 
   const downloadSession = useCallback(() => {
-    const activeBlob = state.recordingBlob || recoveredBlob;
-
-    if (!activeBlob) {
+    if (!effectiveBlob) {
       alert('No recording data found. Please try the ritual again.');
       return;
     }
 
-    const url = URL.createObjectURL(activeBlob);
+    const url = URL.createObjectURL(effectiveBlob);
     const a = document.createElement('a');
     a.href = url;
 
@@ -169,8 +165,8 @@ const ResultPage: React.FC = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    trackEvent('download_session', { type: activeBlob.type || 'video/webm', fileName });
-  }, [recoveredBlob, state.file, state.recordingBlob, trackEvent]);
+    trackEvent('download_session', { type: effectiveBlob.type || 'video/webm', fileName });
+  }, [effectiveBlob, state.file, trackEvent]);
 
   const goHome = useCallback(() => {
     sessionStorage.removeItem(RECOVERY_PRINT_KEY);
@@ -196,12 +192,10 @@ const ResultPage: React.FC = () => {
           draggable={false}
         />
 
-        {/* Monitor area */}
         <div className="res-visualizer-screen">
           {currentPrint && <img src={currentPrint} className="res-print-internal" alt="Sound Print" />}
         </div>
 
-        {/* Invisible hotspots */}
         <div className="res-interactive-layer">
           {isLoggedIn ? (
             <>
