@@ -3,18 +3,16 @@
 .res-page-root {
   position: fixed;
   inset: 0;
-  background: #050810;
+  background-color: #050810;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
 }
 
 .res-machine-container {
   position: relative;
-  aspect-ratio: 16 / 9;
-  width: min(100vw, calc(100dvh * (16 / 9)));
-  height: min(100dvh, calc(100vw * (9 / 16)));
+  width: 100vw;
+  height: 100vh;
 }
 
 .res-background-image {
@@ -22,97 +20,88 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover; /* Fills the screen, eliminating bars */
   user-select: none;
   pointer-events: none;
 }
 
-/* MONITOR AREA (wider to match new background art) */
+/* MONITOR AREA - Calibrated for your new wide frame */
 .res-visualizer-screen {
   position: absolute;
   left: 50%;
   top: 41.5%;
   transform: translate(-50%, -50%);
-  width: 56%;
-  height: 34%;
-  border-radius: 6px;
+  width: 56.5%; 
+  height: 34.5%;
+  border-radius: 4px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.25);
-  box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 1);
+  z-index: 2;
 }
 
 .res-print-internal {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: contrast(1.05) saturate(1.08);
+  filter: contrast(1.1) saturate(1.1);
 }
 
-/* Hotspots layer */
 .res-interactive-layer {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  z-index: 10;
 }
 
-/* Base hotspot */
 .hs {
   position: absolute;
   transform: translate(-50%, -50%);
-  background: rgba(255, 0, 0, 0); /* change to 0.25 temporarily to see boxes */
+  background: rgba(255, 0, 0, 0); /* Change to 0.3 temporarily for calibration */
   border: none;
   padding: 0;
   cursor: pointer;
 }
 
-/* ------------------------------
-   LOGGED OUT: 3 buttons
-   [Discord] [Home] [X]
--------------------------------- */
+/* -------- Shared Button Height -------- */
+.hs-discord, .hs-google, .hs-download, .hs-home-li, .hs-signout-li {
+  top: 81.5%; /* Calibrated for the button row */
+}
 
+/* -------- Logged Out positions -------- */
 .hs-discord {
-  left: 33%;
-  top: 82.0%;
-  width: 20%;
-  height: 6.0%;
+  left: 32.8%;
+  width: 17%;
+  height: 6%;
 }
 
 .hs-home-lo {
   left: 50%;
-  top: 82.0%;
-  width: 16%;
-  height: 5.3%;
+  top: 82.5%;
+  width: 12%;
+  height: 5%;
 }
 
-.hs-x {
-  left: 67%;
-  top: 82.0%;
-  width: 20%;
-  height: 6.0%;
+.hs-google {
+  left: 67.2%;
+  width: 17%;
+  height: 6%;
 }
 
-/* ------------------------------
-   LOGGED IN: 3 buttons
-   [Home] [Download] [Sign out]
--------------------------------- */
-
+/* -------- Logged In positions -------- */
 .hs-home-li {
-  left: 33%;
-  top: 82.0%;
-  width: 16%;
-  height: 5.3%;
+  left: 32.8%;
+  width: 14%;
+  height: 5%;
 }
 
 .hs-download {
   left: 50%;
-  top: 82.0%;
-  width: 20%;
-  height: 6.0%;
+  width: 19%;
+  height: 7%;
 }
 
 .hs-signout-li {
-  left: 67%;
-  top: 82.0%;
-  width: 16%;
-  height: 5.3%;
+  left: 67.2%;
+  width: 14%;
+  height: 5%;
 }
