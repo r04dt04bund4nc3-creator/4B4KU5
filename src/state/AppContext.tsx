@@ -46,7 +46,7 @@ interface AppContextType {
   reset: () => void;
   signInWithDiscord: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  signInWithX: () => Promise<void>;
+  signInWithX: () => Promise<void>; // ✅ NEW
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   savePerformance: (gestureData: any, trackName: string, trackHash: string) => Promise<void>;
@@ -130,11 +130,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false, error: null }));
     });
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false, error: null }));
       restorePostAuthState();
     });
-    return () => { subscription.unsubscribe(); };
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [restorePostAuthState]);
 
   const persistBeforeOAuth = useCallback(async () => {
@@ -159,89 +163,188 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [audio.recordingBlob, audio.file?.name, ritual.soundPrintDataUrl, ritual.finalEQState]);
 
   const signInWithDiscord = useCallback(async () => {
-    await persistBeforeOAuth();
-    await supabase.auth.signInWithOAuth({
-      provider: 'discord',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
-    });
+    try {
+      setAuth(prev => ({ ...prev, error: null }));
+      await persistBeforeOAuth();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'discord',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
   }, [persistBeforeOAuth]);
 
   const signInWithGoogle = useCallback(async () => {
-    await persistBeforeOAuth();
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
-    });
+    try {
+      setAuth(prev => ({ ...prev, error: null }));
+      await persistBeforeOAuth();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
   }, [persistBeforeOAuth]);
 
   const signInWithX = useCallback(async () => {
-    await persistBeforeOAuth();
-    await supabase.auth.signInWithOAuth({
-      provider: 'twitter',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
-    });
+    try {
+      setAuth(prev => ({ ...prev, error: null }));
+      await persistBeforeOAuth();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'twitter',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
   }, [persistBeforeOAuth]);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setAuth(prev => ({ ...prev, error: null }));
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setAuth(prev => ({ ...prev, error: error.message }));
+    }
     return { error };
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error('Sign out error:', error);
   }, []);
 
-  const setFile = useCallback((file: File) => setAudio(prev => ({ ...prev, file, isProcessing: true })), []);
-  const setAudioFile = setFile;
-  const setAudioBuffer = useCallback((buffer: AudioBuffer) => setAudio(prev => ({ ...prev, audioBuffer: buffer, isProcessing: false, duration: buffer.duration })), []);
-  const setPlaying = useCallback((playing: boolean) => setAudio(prev => ({ ...prev, isPlaying: playing })), []);
-  const updateCurrentTime = useCallback((time: number) => setAudio(prev => ({ ...prev, currentTime: time })), []);
-  const setRitualPhase = useCallback((phase: RitualState['phase']) => setRitual(prev => ({ ...prev, phase })), []);
-  const setCountdown = useCallback((count: number) => setRitual(prev => ({ ...prev, countdown: count })), []);
-  const captureSoundPrint = useCallback((dataUrl: string) => {
-    setRitual(prev => ({ ...prev, soundPrintDataUrl: dataUrl, phase: 'complete' }));
-    if (dataUrl) sessionStorage.setItem('g4m3_sound_print', dataUrl);
-  }, []);
-  const setSoundPrint = useCallback((data: any) => { if (data?.dataUrl) captureSoundPrint(data.dataUrl); }, [captureSoundPrint]);
   const saveRecording = useCallback(async (blob: Blob, finalEQ: number[]) => {
     setAudio(prev => ({ ...prev, recordingBlob: blob }));
     setRitual(prev => ({ ...prev, finalEQState: finalEQ, phase: 'capture', isRecording: false }));
-    const dataUrl = await blobToDataURL(blob);
-    sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
-    sessionStorage.setItem('g4m3_final_eq', JSON.stringify(finalEQ));
+    try {
+      if (blob) {
+        const dataUrl = await blobToDataURL(blob);
+        sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
+      }
+      if (finalEQ?.length) {
+        sessionStorage.setItem('g4m3_final_eq', JSON.stringify(finalEQ));
+      }
+    } catch (e) {
+      console.warn('Persist recording failed:', e);
+    }
   }, []);
+
+  const captureSoundPrint = useCallback((dataUrl: string) => {
+    setRitual(prev => ({
+      ...prev,
+      soundPrintDataUrl: dataUrl,
+      phase: 'complete',
+    }));
+    try {
+      if (dataUrl) {
+        sessionStorage.setItem('g4m3_sound_print', dataUrl);
+      }
+    } catch (e) {
+      console.warn('Persist sound print failed:', e);
+    }
+  }, []);
+
+  const setSoundPrint = useCallback((data: any) => {
+    if (data?.dataUrl) captureSoundPrint(data.dataUrl);
+  }, [captureSoundPrint]);
+
+  const setFile = useCallback((file: File) => {
+    setAudio(prev => ({ ...prev, file, isProcessing: true }));
+  }, []);
+  const setAudioFile = setFile;
+
+  const setAudioBuffer = useCallback((buffer: AudioBuffer) => {
+    setAudio(prev => ({
+      ...prev,
+      audioBuffer: buffer,
+      isProcessing: false,
+      duration: buffer.duration,
+    }));
+  }, []);
+
+  const setPlaying = useCallback((playing: boolean) => {
+    setAudio(prev => ({ ...prev, isPlaying: playing }));
+  }, []);
+
+  const updateCurrentTime = useCallback((time: number) => {
+    setAudio(prev => ({ ...prev, currentTime: time }));
+  }, []);
+
+  const setRitualPhase = useCallback((phase: RitualState['phase']) => {
+    setRitual(prev => ({ ...prev, phase }));
+  }, []);
+
+  const setCountdown = useCallback((count: number) => {
+    setRitual(prev => ({ ...prev, countdown: count }));
+  }, []);
+
   const reset = useCallback(() => {
     setAudio(initialAudioState);
     setRitual(initialRitualState);
-    sessionStorage.clear();
+    try {
+      sessionStorage.removeItem('g4m3_sound_print');
+      sessionStorage.removeItem('g4m3_recording_data_url');
+      sessionStorage.removeItem('g4m3_filename');
+      sessionStorage.removeItem('g4m3_final_eq');
+      sessionStorage.removeItem('post-auth-redirect');
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const savePerformance = useCallback(async (gestureData: any, trackName: string, trackHash: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from('performances').insert({
+
+    const { error } = await supabase.from('performances').insert({
       user_id: user.id,
       track_name: trackName,
       track_hash: trackHash,
       gesture_data: gestureData,
       thumbnail_data_url: ritual.soundPrintDataUrl,
     });
+
+    if (error) {
+      console.error('Error saving performance:', error);
+    }
   }, [ritual.soundPrintDataUrl]);
 
   return (
     <AppContext.Provider value={{
-      audio, state: audio, ritual, auth, setFile, setAudioFile, setAudioBuffer, setPlaying, updateCurrentTime,
-      setRitualPhase, setCountdown, setSoundPrint, captureSoundPrint, saveRecording, reset,
-      signInWithDiscord, signInWithGoogle, signInWithX, signInWithEmail, signOut, savePerformance,
+      audio,
+      state: audio,
+      ritual,
+      auth,
+      setFile,
+      setAudioFile,
+      setAudioBuffer,
+      setPlaying,
+      updateCurrentTime,
+      setRitualPhase,
+      setCountdown,
+      setSoundPrint,
+      captureSoundPrint,
+      saveRecording,
+      reset,
+      signInWithDiscord,
+      signInWithGoogle,
+      signInWithX, // ✅ ✅ ✅
+      signInWithEmail,
+      signOut,
+      savePerformance,
     }}>
       {children}
     </AppContext.Provider>
   );
 }
 
-export const useAppContext = () => {
+export function useApp() {
   const context = useContext(AppContext);
   if (!context) throw new Error('useApp must be used within AppProvider');
   return context;
-};
-export const useApp = useAppContext;
+}
