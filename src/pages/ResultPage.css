@@ -20,12 +20,12 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover; /* Fills the screen, eliminating bars */
+  object-fit: cover;
   user-select: none;
   pointer-events: none;
 }
 
-/* MONITOR AREA - Calibrated for your new wide frame */
+/* MONITOR AREA */
 .res-visualizer-screen {
   position: absolute;
   left: 50%;
@@ -56,52 +56,64 @@
 .hs {
   position: absolute;
   transform: translate(-50%, -50%);
-  background: rgba(255, 0, 0, 0); /* Change to 0.3 temporarily for calibration */
+  background: rgba(255, 0, 0, 0); /* Debug: change to 0.2 to see boxes */
   border: none;
   padding: 0;
   cursor: pointer;
 }
 
-/* -------- Shared Button Height -------- */
+/* -------- Shared Button Row -------- */
 .hs-discord, .hs-google, .hs-download, .hs-home-li, .hs-signout-li {
-  top: 81.5%; /* Calibrated for the button row */
+  top: 81.5%;
 }
 
-/* -------- Logged Out positions -------- */
-.hs-discord {
-  left: 32.8%;
-  width: 17%;
-  height: 6%;
+/* -------- Logged Out -------- */
+.hs-discord { left: 32.8%; width: 17%; height: 6%; }
+.hs-home-lo { left: 50%; top: 82.5%; width: 12%; height: 5%; }
+.hs-google { left: 67.2%; width: 17%; height: 6%; }
+
+/* -------- Logged In -------- */
+.hs-home-li { left: 32.8%; width: 14%; height: 5%; }
+.hs-download { left: 50%; width: 19%; height: 7%; }
+.hs-signout-li { left: 67.2%; width: 14%; height: 5%; }
+
+/* -------- SLOT MACHINE VIEW -------- */
+/* These are the invisible buttons over the 3 circles on the slots image */
+.hs-slot-left {
+  left: 29.5%;
+  top: 46%;
+  width: 18%;
+  height: 32%;
+  border-radius: 50%; /* Makes the hitbox a circle */
 }
 
-.hs-home-lo {
+.hs-slot-center {
   left: 50%;
-  top: 82.5%;
-  width: 12%;
-  height: 5%;
+  top: 46%;
+  width: 18%;
+  height: 32%;
+  border-radius: 50%;
 }
 
-.hs-google {
-  left: 67.2%;
-  width: 17%;
-  height: 6%;
+.hs-slot-right {
+  left: 70.5%;
+  top: 46%;
+  width: 18%;
+  height: 32%;
+  border-radius: 50%;
 }
 
-/* -------- Logged In positions -------- */
-.hs-home-li {
-  left: 32.8%;
-  width: 14%;
-  height: 5%;
-}
-
-.hs-download {
+/* -------- PRIZE VIEW -------- */
+.hs-prize-home {
   left: 50%;
-  width: 19%;
-  height: 7%;
+  top: 90%;
+  width: 20%;
+  height: 8%;
 }
 
-.hs-signout-li {
-  left: 67.2%;
-  width: 14%;
-  height: 5%;
+.hs-prize-spin-again {
+  left: 50%;
+  top: 75%;
+  width: 25%;
+  height: 10%;
 }
