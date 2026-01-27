@@ -3,12 +3,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
-import { supabase } from '../lib/supabaseClient';
 
 import loggedOutSkin from '../assets/result-logged-out.webp';
 import loggedInSkin from '../assets/result-logged-in.webp';
 import './ResultPage.css';
 
+/** -------- IndexedDB helpers (for large video blobs) -------- */
 const DB_NAME = 'G4BKU5_DB';
 const STORE_NAME = 'blobs';
 const DB_VERSION = 1;
@@ -16,14 +16,12 @@ const DB_VERSION = 1;
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }
     };
-
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -66,69 +64,50 @@ async function deleteBlob(key: string): Promise<void> {
 const RECOVERY_BLOB_KEY = 'res_recovery_blob';
 const RECOVERY_PRINT_KEY = 'res_recovery_print';
 
+/** -------- Filename helpers -------- */
 function sanitizeBaseName(name: string): string {
-  return name
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[^a-z0-9]+/gi, '_')
-    .replace(/^_+|_+$/g, '');
+  return name.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
 }
 
 function buildSessionFileName(file?: File | null): string {
   const prefix = '4B4KU5-';
-
   if (file?.name) {
     const base = sanitizeBaseName(file.name) || 'session';
     return `${prefix}${base}.webm`;
   }
-
   const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const hh = String(now.getHours()).padStart(2, '0');
-  const min = String(now.getMinutes()).padStart(2, '0');
-  const stamp = `${yy}${mm}${dd}${hh}${min}`;
-
+  const stamp = `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
   return `${prefix}${stamp}.webm`;
 }
 
+/** -------- Component -------- */
 const ResultPage: React.FC = () => {
   const navigate = useNavigate();
-  const { state, ritual, auth, signOut, reset } = useApp();
+  const { state, ritual, auth, signOut, reset, signInWithDiscord, signInWithX } = useApp();
   const { trackEvent } = useAnalytics();
 
   const [recoveredPrint, setRecoveredPrint] = useState<string | null>(null);
   const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
 
-  // Recover after OAuth redirect (or refresh)
   useEffect(() => {
     const run = async () => {
       const savedPrint = sessionStorage.getItem(RECOVERY_PRINT_KEY);
       if (savedPrint) setRecoveredPrint(savedPrint);
-
       try {
         const blob = await loadBlob(RECOVERY_BLOB_KEY);
         if (blob) setRecoveredBlob(blob);
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     };
     run();
   }, []);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
 
-  const getRedirectUrl = () => window.location.origin + '/auth/callback';
-
-  const safePersistAndRedirect = useCallback(
-    async (provider: 'discord' | 'twitter') => {
+  const handleSocialLogin = useCallback(
+    async (provider: 'discord' | 'x') => {
       trackEvent('social_login_attempt', { provider });
-      sessionStorage.setItem('post-auth-redirect', '/result');
 
-      if (ritual.soundPrintDataUrl) {
-        sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
-      }
-
+      // Local IndexedDB backup (safety for large videos)
       if (state.recordingBlob) {
         try {
           await saveBlob(RECOVERY_BLOB_KEY, state.recordingBlob);
@@ -137,12 +116,14 @@ const ResultPage: React.FC = () => {
         }
       }
 
-      await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo: getRedirectUrl() },
-      });
+      // Call context methods
+      if (provider === 'discord') {
+        await signInWithDiscord();
+      } else {
+        await signInWithX();
+      }
     },
-    [ritual.soundPrintDataUrl, state.recordingBlob, trackEvent],
+    [state.recordingBlob, trackEvent, signInWithDiscord, signInWithX]
   );
 
   const downloadSession = useCallback(() => {
@@ -150,20 +131,15 @@ const ResultPage: React.FC = () => {
       alert('No recording data found. Please try the ritual again.');
       return;
     }
-
     const url = URL.createObjectURL(effectiveBlob);
     const a = document.createElement('a');
     a.href = url;
-
-    const fileName = buildSessionFileName(state.file || null);
-    a.download = fileName;
-
+    a.download = buildSessionFileName(state.file || null);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    trackEvent('download_session', { type: effectiveBlob.type || 'video/webm', fileName });
+    trackEvent('download_session', { type: effectiveBlob.type || 'video/webm' });
   }, [effectiveBlob, state.file, trackEvent]);
 
   const goHome = useCallback(() => {
@@ -207,13 +183,13 @@ const ResultPage: React.FC = () => {
             <>
               <button
                 className="hs hs-discord"
-                onClick={() => safePersistAndRedirect('discord')}
+                onClick={() => handleSocialLogin('discord')}
                 aria-label="Login with Discord"
               />
               <button className="hs hs-home-lo" onClick={goHome} aria-label="Return Home" />
               <button
                 className="hs hs-x"
-                onClick={() => safePersistAndRedirect('twitter')}
+                onClick={() => handleSocialLogin('x')}
                 aria-label="Login with X"
               />
             </>
