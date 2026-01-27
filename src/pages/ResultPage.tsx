@@ -1,4 +1,3 @@
-// src/pages/ResultPage.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
@@ -8,7 +7,7 @@ import loggedOutSkin from '../assets/result-logged-out.webp';
 import loggedInSkin from '../assets/result-logged-in.webp';
 import ritualSlots from '../assets/ritual-slots.webp';
 import prize0 from '../assets/prize-0.webp';
-import steamSlotsHub from '../assets/steam-slots-hub.webp'; // NEW
+import steamSlotsHub from '../assets/steam-slots-hub.webp';
 
 import './ResultPage.css';
 
@@ -48,12 +47,11 @@ async function loadBlob(key: string): Promise<Blob | null> {
 const RECOVERY_BLOB_KEY = 'res_recovery_blob';
 const RECOVERY_PRINT_KEY = 'res_recovery_print';
 
-// Added 'hub' to the view types
 type ResultView = 'summary' | 'slots' | 'prize-0' | 'hub';
 
 type StreakState = {
-  day: number; // 1..6
-  lastDate: string; // YYYY-MM-DD
+  day: number;
+  lastDate: string;
 };
 
 function todayKey(d = new Date()) {
@@ -103,7 +101,6 @@ function getAndUpdateStreak(): StreakState {
 
     const d = diffDays(prevDate, nowDate);
 
-    // consecutive day
     if (d === 1) {
       const nextDay = Math.min(6, (prev.day || 1) + 1);
       const s = { day: nextDay, lastDate: today };
@@ -111,7 +108,6 @@ function getAndUpdateStreak(): StreakState {
       return s;
     }
 
-    // missed day(s) -> reset
     const s = { day: 1, lastDate: today };
     localStorage.setItem(key, JSON.stringify(s));
     return s;
@@ -130,11 +126,9 @@ const ResultPage: React.FC = () => {
   const [view, setView] = useState<ResultView>('summary');
   const [recoveredPrint, setRecoveredPrint] = useState<string | null>(null);
   const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
-  
-  // NEW: Controls when user can click to advance from prize screen
   const [canProceed, setCanProceed] = useState(false);
 
-  const [streak, setStreak] = useState<StreakState>(() => {
+  const [streak] = useState<StreakState>(() => {
     try {
       return getAndUpdateStreak();
     } catch {
@@ -152,7 +146,6 @@ const ResultPage: React.FC = () => {
     run();
   }, []);
 
-  // NEW: 2-second "read time" before allowing click to hub
   useEffect(() => {
     if (view === 'prize-0') {
       setCanProceed(false);
@@ -167,7 +160,11 @@ const ResultPage: React.FC = () => {
     async (provider: 'discord' | 'google') => {
       trackEvent('social_login_attempt', { provider });
       if (state.recordingBlob) {
-        try { await saveBlob(RECOVERY_BLOB_KEY, state.recordingBlob); } catch (e) { console.warn(e); }
+        try {
+          await saveBlob(RECOVERY_BLOB_KEY, state.recordingBlob);
+        } catch (e) {
+          console.warn(e);
+        }
       }
       if (ritual.soundPrintDataUrl) {
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
@@ -210,12 +207,11 @@ const ResultPage: React.FC = () => {
   const isLoggedIn = !!auth.user?.id;
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
-  // Updated to your exact preferred copy
-  const dayText = useMemo(() => {
-    return `DAY ${streak.day} OF 6: Come back tomorrow. Six consecutive days unlock the NFT for free.`;
-  }, [streak.day]);
+  const dayText = useMemo(
+    () => `DAY ${streak.day} OF 6: Come back tomorrow. Six consecutive days unlock the NFT for free.`,
+    [streak.day]
+  );
 
-  // NEW: Hub View
   if (view === 'hub') {
     return (
       <div className="res-page-root">
@@ -246,14 +242,13 @@ const ResultPage: React.FC = () => {
 
   if (view === 'prize-0') {
     return (
-      <div 
-        className="res-page-root" 
-        onClick={() => canProceed && setView('hub')} // Click anywhere to advance after 2s
+      <div
+        className="res-page-root"
+        onClick={() => canProceed && setView('hub')}
         style={{ cursor: canProceed ? 'pointer' : 'wait' }}
       >
         <div className="res-machine-container">
           <img src={prize0} className="res-background-image" alt="Prize 0" />
-          {/* message overlay (positioned in the “shelf” zone) */}
           <div
             style={{
               position: 'absolute',
@@ -273,17 +268,18 @@ const ResultPage: React.FC = () => {
           >
             {dayText}
           </div>
-          {/* Optional: subtle "tap to continue" hint after 2s */}
           {canProceed && (
-            <div style={{
-              position: 'absolute',
-              bottom: '10%',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: 'rgba(201, 255, 216, 0.6)',
-              fontSize: '14px',
-              pointerEvents: 'none'
-            }}>
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '10%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                color: 'rgba(201, 255, 216, 0.6)',
+                fontSize: '14px',
+                pointerEvents: 'none',
+              }}
+            >
               Tap to continue
             </div>
           )}
@@ -303,7 +299,9 @@ const ResultPage: React.FC = () => {
         />
 
         <div className="res-visualizer-screen">
-          {currentPrint && <img src={currentPrint} className="res-print-internal" alt="Sound Print" />}
+          {currentPrint && (
+            <img src={currentPrint} className="res-print-internal" alt="Sound Print" />
+          )}
         </div>
 
         <div className="res-interactive-layer">
@@ -315,9 +313,17 @@ const ResultPage: React.FC = () => {
             </>
           ) : (
             <>
-              <button className="hs hs-discord" onClick={() => handleSocialLogin('discord')} aria-label="Login with Discord" />
+              <button
+                className="hs hs-discord"
+                onClick={() => handleSocialLogin('discord')}
+                aria-label="Login with Discord"
+              />
               <button className="hs hs-home-lo" onClick={goHome} aria-label="Return Home" />
-              <button className="hs hs-google" onClick={() => handleSocialLogin('google')} aria-label="Login with Google" />
+              <button
+                className="hs hs-google"
+                onClick={() => handleSocialLogin('google')}
+                aria-label="Login with Google"
+              />
             </>
           )}
         </div>
