@@ -14,60 +14,41 @@ export default function AuthCallbackPage() {
         const hasCode = !!url.searchParams.get('code');
 
         if (hasCode) {
-          // Exchange code for session
-          const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
-          if (error) throw error;
-        } else {
-          // Fallback: just get session (for direct navigation or refresh)
-          const { error } = await supabase.auth.getSession();
-          if (error) throw error;
+          try {
+            const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+            if (error) throw error;
+          } catch (pkceErr: any) {
+            // If PKCE fails (verifier missing), check if we have a session anyway
+            // This is the "Back Button" logic automated
+            const { data } = await supabase.auth.getSession();
+            if (!data.session) throw pkceErr;
+            console.warn('PKCE verifier missing but session recovered.');
+          }
         }
 
-        // CRITICAL FIX: Wait 500ms to let Supabase client hydrate the session
-        // This prevents the "bounce" where the session exists but the context hasn't updated yet
-        await new Promise(resolve => setTimeout(resolve, 500));
-
+        // Settling delay
+        await new Promise(r => setTimeout(r, 400));
         if (cancelled) return;
 
-        // Check session again to be sure
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          throw new Error("Session not established after exchange");
-        }
-
-        // Redirect logic
         const dest = sessionStorage.getItem('post-auth-redirect') || '/result';
         sessionStorage.removeItem('post-auth-redirect');
 
-        // Use replace so back button doesn't loop
         window.location.replace(dest);
-
       } catch (e: any) {
-        console.error('AuthCallback Error:', e);
+        console.error('Auth Error:', e);
         if (cancelled) return;
-        setMsg(`Login failed: ${e?.message ?? 'Unknown error'}`);
+        setMsg(`Login failed: ${e?.message ?? 'Unknown Error'}`);
         setTimeout(() => window.location.replace('/'), 2000);
       }
     };
 
     run();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   return (
-    <div style={{ 
-      minHeight: '100dvh', 
-      background: '#050810', 
-      color: '#fff', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      fontFamily: 'monospace'
-    }}>
-      <div style={{ opacity: 0.85, fontSize: '1.2rem' }}>{msg}</div>
+    <div style={{ minHeight: '100dvh', background: '#050810', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace' }}>
+      <div style={{ opacity: 0.85 }}>{msg}</div>
     </div>
   );
 }

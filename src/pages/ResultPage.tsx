@@ -1,5 +1,5 @@
 // src/pages/ResultPage.tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
@@ -8,13 +8,10 @@ import loggedOutSkin from '../assets/result-logged-out.webp';
 import loggedInSkin from '../assets/result-logged-in.webp';
 import ritualSlots from '../assets/ritual-slots.webp';
 import prize0 from '../assets/prize-0.webp';
-// Future assets (uncomment when ready)
-// import prize3 from '../assets/prize-3.webp'; 
-// import prize6 from '../assets/prize-6.webp'; 
+import steamSlotsHub from '../assets/steam-slots-hub.webp'; // NEW
 
 import './ResultPage.css';
 
-/** -------- IndexedDB helpers -------- */
 const DB_NAME = 'G4BKU5_DB';
 const STORE_NAME = 'blobs';
 const DB_VERSION = 1;
@@ -24,9 +21,7 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -53,7 +48,79 @@ async function loadBlob(key: string): Promise<Blob | null> {
 const RECOVERY_BLOB_KEY = 'res_recovery_blob';
 const RECOVERY_PRINT_KEY = 'res_recovery_print';
 
-type ResultView = 'summary' | 'slots' | 'prize-0' | 'prize-3' | 'prize-6';
+// Added 'hub' to the view types
+type ResultView = 'summary' | 'slots' | 'prize-0' | 'hub';
+
+type StreakState = {
+  day: number; // 1..6
+  lastDate: string; // YYYY-MM-DD
+};
+
+function todayKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseDateKey(s: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const yy = Number(m[1]);
+  const mm = Number(m[2]) - 1;
+  const dd = Number(m[3]);
+  return new Date(yy, mm, dd);
+}
+
+function diffDays(a: Date, b: Date) {
+  const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((utcB - utcA) / (24 * 60 * 60 * 1000));
+}
+
+function getAndUpdateStreak(): StreakState {
+  const key = 'g4m3_daily_streak';
+  const today = todayKey();
+  const raw = localStorage.getItem(key);
+
+  if (!raw) {
+    const s = { day: 1, lastDate: today };
+    localStorage.setItem(key, JSON.stringify(s));
+    return s;
+  }
+
+  try {
+    const prev: StreakState = JSON.parse(raw);
+    if (prev.lastDate === today) return prev;
+
+    const prevDate = parseDateKey(prev.lastDate);
+    const nowDate = parseDateKey(today);
+    if (!prevDate || !nowDate) {
+      const s = { day: 1, lastDate: today };
+      localStorage.setItem(key, JSON.stringify(s));
+      return s;
+    }
+
+    const d = diffDays(prevDate, nowDate);
+
+    // consecutive day
+    if (d === 1) {
+      const nextDay = Math.min(6, (prev.day || 1) + 1);
+      const s = { day: nextDay, lastDate: today };
+      localStorage.setItem(key, JSON.stringify(s));
+      return s;
+    }
+
+    // missed day(s) -> reset
+    const s = { day: 1, lastDate: today };
+    localStorage.setItem(key, JSON.stringify(s));
+    return s;
+  } catch {
+    const s = { day: 1, lastDate: today };
+    localStorage.setItem(key, JSON.stringify(s));
+    return s;
+  }
+}
 
 const ResultPage: React.FC = () => {
   const navigate = useNavigate();
@@ -63,6 +130,17 @@ const ResultPage: React.FC = () => {
   const [view, setView] = useState<ResultView>('summary');
   const [recoveredPrint, setRecoveredPrint] = useState<string | null>(null);
   const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
+  
+  // NEW: Controls when user can click to advance from prize screen
+  const [canProceed, setCanProceed] = useState(false);
+
+  const [streak, setStreak] = useState<StreakState>(() => {
+    try {
+      return getAndUpdateStreak();
+    } catch {
+      return { day: 1, lastDate: todayKey() };
+    }
+  });
 
   useEffect(() => {
     const run = async () => {
@@ -73,6 +151,15 @@ const ResultPage: React.FC = () => {
     };
     run();
   }, []);
+
+  // NEW: 2-second "read time" before allowing click to hub
+  useEffect(() => {
+    if (view === 'prize-0') {
+      setCanProceed(false);
+      const timer = setTimeout(() => setCanProceed(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [view]);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
 
@@ -91,14 +178,12 @@ const ResultPage: React.FC = () => {
     [state.recordingBlob, ritual.soundPrintDataUrl, trackEvent, signInWithDiscord, signInWithGoogle]
   );
 
-  // NEW: Download and transition to Slots
   const downloadAndSpin = useCallback(() => {
     if (!effectiveBlob) {
       alert('No recording found. Please try the ritual again.');
       return;
     }
 
-    // 1. Trigger Download
     const url = URL.createObjectURL(effectiveBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -108,74 +193,105 @@ const ResultPage: React.FC = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    // 2. Analytics
     trackEvent('download_and_spin');
-
-    // 3. Transition View
     setView('slots');
   }, [effectiveBlob, trackEvent]);
 
-  const goHome = () => {
+  const goHome = useCallback(() => {
     reset();
     navigate('/');
-  };
+  }, [navigate, reset]);
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
     await signOut();
     navigate('/');
-  };
+  }, [navigate, signOut]);
 
   const isLoggedIn = !!auth.user?.id;
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
-  // Render Logic for Views
-  
-  // 1. Slots View
+  // Updated to your exact preferred copy
+  const dayText = useMemo(() => {
+    return `DAY ${streak.day} OF 6: Come back tomorrow. Six consecutive days unlock the NFT for free.`;
+  }, [streak.day]);
+
+  // NEW: Hub View
+  if (view === 'hub') {
+    return (
+      <div className="res-page-root">
+        <div className="res-machine-container">
+          <img src={steamSlotsHub} className="res-background-image" alt="Steam Slots Hub" />
+          <div className="res-interactive-layer">
+            <button className="hs hs-hub-home" onClick={goHome} aria-label="Return Home" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (view === 'slots') {
     return (
       <div className="res-page-root">
         <div className="res-machine-container">
           <img src={ritualSlots} className="res-background-image" alt="Slot Ritual" />
           <div className="res-interactive-layer">
-            {/* The three slot circles */}
-            <button className="hs hs-slot-left" onClick={() => setView('prize-0')} aria-label="Slot Left" />
-            <button className="hs hs-slot-center" onClick={() => setView('prize-6')} aria-label="Slot Center" />
-            <button className="hs hs-slot-right" onClick={() => setView('prize-3')} aria-label="Slot Right" />
+            <button className="hs hs-slot-left" onClick={() => setView('prize-0')} aria-label="$0" />
+            <button className="hs hs-slot-center" onClick={() => setView('prize-0')} aria-label="$6" />
+            <button className="hs hs-slot-right" onClick={() => setView('prize-0')} aria-label="$3" />
           </div>
         </div>
       </div>
     );
   }
 
-  // 2. Prize Views
-  if (view.startsWith('prize')) {
-    let prizeImage = prize0; // Default
-    let prizeName = "Consolation";
-
-    if (view === 'prize-6') {
-      prizeImage = prize0; // Placeholder until you upload prize-6
-      prizeName = "Jackpot";
-    }
-    if (view === 'prize-3') {
-      prizeImage = prize0; // Placeholder until you upload prize-3
-      prizeName = "Winner";
-    }
-
+  if (view === 'prize-0') {
     return (
-      <div className="res-page-root">
+      <div 
+        className="res-page-root" 
+        onClick={() => canProceed && setView('hub')} // Click anywhere to advance after 2s
+        style={{ cursor: canProceed ? 'pointer' : 'wait' }}
+      >
         <div className="res-machine-container">
-          <img src={prizeImage} className="res-background-image" alt={prizeName} />
-          <div className="res-interactive-layer">
-            <button className="hs hs-prize-home" onClick={goHome} aria-label="Return Home" />
-            {/* Optional: Spin Again button */}
-            <button className="hs hs-prize-spin-again" onClick={() => setView('slots')} aria-label="Spin Again" />
+          <img src={prize0} className="res-background-image" alt="Prize 0" />
+          {/* message overlay (positioned in the “shelf” zone) */}
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '12%',
+              transform: 'translate(-50%, -50%)',
+              width: '80%',
+              textAlign: 'center',
+              color: '#c9ffd8',
+              fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textShadow: '0 2px 16px rgba(0,0,0,0.75)',
+              fontSize: 'clamp(14px, 2.2vw, 28px)',
+              pointerEvents: 'none',
+            }}
+          >
+            {dayText}
           </div>
+          {/* Optional: subtle "tap to continue" hint after 2s */}
+          {canProceed && (
+            <div style={{
+              position: 'absolute',
+              bottom: '10%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              color: 'rgba(201, 255, 216, 0.6)',
+              fontSize: '14px',
+              pointerEvents: 'none'
+            }}>
+              Tap to continue
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // 3. Default Summary View (Logged In/Out)
   return (
     <div className="res-page-root">
       <div className="res-machine-container">
@@ -187,9 +303,7 @@ const ResultPage: React.FC = () => {
         />
 
         <div className="res-visualizer-screen">
-          {currentPrint && (
-            <img src={currentPrint} className="res-print-internal" alt="Sound Print" />
-          )}
+          {currentPrint && <img src={currentPrint} className="res-print-internal" alt="Sound Print" />}
         </div>
 
         <div className="res-interactive-layer">
