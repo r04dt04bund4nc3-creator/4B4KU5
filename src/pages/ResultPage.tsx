@@ -1,3 +1,4 @@
+// src/pages/ResultPage.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
@@ -11,6 +12,7 @@ import steamSlotsHub from '../assets/steam-slots-hub.webp';
 
 import './ResultPage.css';
 
+/** -------- IndexedDB helpers -------- */
 const DB_NAME = 'G4BKU5_DB';
 const STORE_NAME = 'blobs';
 const DB_VERSION = 1;
@@ -50,8 +52,8 @@ const RECOVERY_PRINT_KEY = 'res_recovery_print';
 type ResultView = 'summary' | 'slots' | 'prize-0' | 'hub';
 
 type StreakState = {
-  day: number;
-  lastDate: string;
+  day: number; // 1..6
+  lastDate: string; // YYYY-MM-DD
 };
 
 function todayKey(d = new Date()) {
@@ -128,6 +130,7 @@ const ResultPage: React.FC = () => {
   const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
   const [canProceed, setCanProceed] = useState(false);
 
+  // FIXED: Removed 'setStreak' to satisfy the linter
   const [streak] = useState<StreakState>(() => {
     try {
       return getAndUpdateStreak();
@@ -160,11 +163,7 @@ const ResultPage: React.FC = () => {
     async (provider: 'discord' | 'google') => {
       trackEvent('social_login_attempt', { provider });
       if (state.recordingBlob) {
-        try {
-          await saveBlob(RECOVERY_BLOB_KEY, state.recordingBlob);
-        } catch (e) {
-          console.warn(e);
-        }
+        try { await saveBlob(RECOVERY_BLOB_KEY, state.recordingBlob); } catch (e) { console.warn(e); }
       }
       if (ritual.soundPrintDataUrl) {
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
@@ -207,10 +206,9 @@ const ResultPage: React.FC = () => {
   const isLoggedIn = !!auth.user?.id;
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
-  const dayText = useMemo(
-    () => `DAY ${streak.day} OF 6: Come back tomorrow. Six consecutive days unlock the NFT for free.`,
-    [streak.day]
-  );
+  const dayText = useMemo(() => {
+    return `DAY ${streak.day} OF 6: Come back tomorrow. Six consecutive days unlock the NFT for free.`;
+  }, [streak.day]);
 
   if (view === 'hub') {
     return (
@@ -242,44 +240,26 @@ const ResultPage: React.FC = () => {
 
   if (view === 'prize-0') {
     return (
-      <div
-        className="res-page-root"
+      <div 
+        className="res-page-root" 
         onClick={() => canProceed && setView('hub')}
         style={{ cursor: canProceed ? 'pointer' : 'wait' }}
       >
         <div className="res-machine-container">
           <img src={prize0} className="res-background-image" alt="Prize 0" />
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '12%',
-              transform: 'translate(-50%, -50%)',
-              width: '80%',
-              textAlign: 'center',
-              color: '#c9ffd8',
-              fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
-              fontWeight: 700,
-              letterSpacing: '0.06em',
-              textShadow: '0 2px 16px rgba(0,0,0,0.75)',
-              fontSize: 'clamp(14px, 2.2vw, 28px)',
-              pointerEvents: 'none',
-            }}
-          >
+          <div className="prize-shelf-text">
             {dayText}
           </div>
           {canProceed && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '10%',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                color: 'rgba(201, 255, 216, 0.6)',
-                fontSize: '14px',
-                pointerEvents: 'none',
-              }}
-            >
+            <div style={{
+              position: 'absolute',
+              bottom: '10%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              color: 'rgba(201, 255, 216, 0.6)',
+              fontSize: '14px',
+              pointerEvents: 'none'
+            }}>
               Tap to continue
             </div>
           )}
@@ -299,9 +279,7 @@ const ResultPage: React.FC = () => {
         />
 
         <div className="res-visualizer-screen">
-          {currentPrint && (
-            <img src={currentPrint} className="res-print-internal" alt="Sound Print" />
-          )}
+          {currentPrint && <img src={currentPrint} className="res-print-internal" alt="Sound Print" />}
         </div>
 
         <div className="res-interactive-layer">
@@ -313,17 +291,9 @@ const ResultPage: React.FC = () => {
             </>
           ) : (
             <>
-              <button
-                className="hs hs-discord"
-                onClick={() => handleSocialLogin('discord')}
-                aria-label="Login with Discord"
-              />
+              <button className="hs hs-discord" onClick={() => handleSocialLogin('discord')} aria-label="Login with Discord" />
               <button className="hs hs-home-lo" onClick={goHome} aria-label="Return Home" />
-              <button
-                className="hs hs-google"
-                onClick={() => handleSocialLogin('google')}
-                aria-label="Login with Google"
-              />
+              <button className="hs hs-google" onClick={() => handleSocialLogin('google')} aria-label="Login with Google" />
             </>
           )}
         </div>
