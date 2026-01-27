@@ -4,8 +4,6 @@ import type { ReactNode } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type { Session, AuthError } from '@supabase/supabase-js';
 
-// ... (Interfaces and initial states are unchanged) ...
-
 interface AudioState {
   file: File | null;
   audioBuffer: AudioBuffer | null;
@@ -48,6 +46,7 @@ interface AppContextType {
   reset: () => void;
   signInWithDiscord: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithX: () => Promise<void>; // ✅ NEW
   signInWithEmail: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   savePerformance: (gestureData: any, trackName: string, trackHash: string) => Promise<void>;
@@ -77,10 +76,8 @@ const initialAuthState: AuthState = {
   error: null,
 };
 
-
 const AppContext = createContext<AppContextType | null>(null);
 
-// ... (blobToDataURL and dataURLToBlob helpers are unchanged) ...
 const blobToDataURL = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -104,7 +101,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [ritual, setRitual] = useState<RitualState>(initialRitualState);
   const [auth, setAuth] = useState<AuthState>(initialAuthState);
 
-  // ... (All other functions from restorePostAuthState to reset are unchanged) ...
   const restorePostAuthState = useCallback(() => {
     try {
       const sp = sessionStorage.getItem('g4m3_sound_print');
@@ -118,7 +114,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const fileName = sessionStorage.getItem('g4m3_filename');
       if (fileName) {
-        // Placeholder file for naming downloads; no data attached (not needed)
         const file = new File([], fileName);
         setAudio(prev => ({ ...prev, file }));
       }
@@ -132,9 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuth(prev => ({ ...prev, user: session?.user || null, isLoading: false, error: null }));
     });
 
@@ -147,6 +140,118 @@ export function AppProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, [restorePostAuthState]);
+
+  const persistBeforeOAuth = useCallback(async () => {
+    try {
+      if (audio.recordingBlob) {
+        const dataUrl = await blobToDataURL(audio.recordingBlob);
+        sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
+      }
+      if (ritual.soundPrintDataUrl) {
+        sessionStorage.setItem('g4m3_sound_print', ritual.soundPrintDataUrl);
+      }
+      if (audio.file?.name) {
+        sessionStorage.setItem('g4m3_filename', audio.file.name);
+      }
+      if (ritual.finalEQState?.length) {
+        sessionStorage.setItem('g4m3_final_eq', JSON.stringify(ritual.finalEQState));
+      }
+      sessionStorage.setItem('post-auth-redirect', 'result');
+    } catch (e) {
+      console.warn('Persist before OAuth failed:', e);
+    }
+  }, [audio.recordingBlob, audio.file?.name, ritual.soundPrintDataUrl, ritual.finalEQState]);
+
+  const signInWithDiscord = useCallback(async () => {
+    try {
+      setAuth(prev => ({ ...prev, error: null }));
+      await persistBeforeOAuth();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'discord',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
+  }, [persistBeforeOAuth]);
+
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      setAuth(prev => ({ ...prev, error: null }));
+      await persistBeforeOAuth();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
+  }, [persistBeforeOAuth]);
+
+  const signInWithX = useCallback(async () => {
+    try {
+      setAuth(prev => ({ ...prev, error: null }));
+      await persistBeforeOAuth();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'twitter',
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setAuth(prev => ({ ...prev, error: err.message }));
+    }
+  }, [persistBeforeOAuth]);
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setAuth(prev => ({ ...prev, error: null }));
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setAuth(prev => ({ ...prev, error: error.message }));
+    }
+    return { error };
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error('Sign out error:', error);
+  }, []);
+
+  const saveRecording = useCallback(async (blob: Blob, finalEQ: number[]) => {
+    setAudio(prev => ({ ...prev, recordingBlob: blob }));
+    setRitual(prev => ({ ...prev, finalEQState: finalEQ, phase: 'capture', isRecording: false }));
+    try {
+      if (blob) {
+        const dataUrl = await blobToDataURL(blob);
+        sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
+      }
+      if (finalEQ?.length) {
+        sessionStorage.setItem('g4m3_final_eq', JSON.stringify(finalEQ));
+      }
+    } catch (e) {
+      console.warn('Persist recording failed:', e);
+    }
+  }, []);
+
+  const captureSoundPrint = useCallback((dataUrl: string) => {
+    setRitual(prev => ({
+      ...prev,
+      soundPrintDataUrl: dataUrl,
+      phase: 'complete',
+    }));
+    try {
+      if (dataUrl) {
+        sessionStorage.setItem('g4m3_sound_print', dataUrl);
+      }
+    } catch (e) {
+      console.warn('Persist sound print failed:', e);
+    }
+  }, []);
+
+  const setSoundPrint = useCallback((data: any) => {
+    if (data?.dataUrl) captureSoundPrint(data.dataUrl);
+  }, [captureSoundPrint]);
 
   const setFile = useCallback((file: File) => {
     setAudio(prev => ({ ...prev, file, isProcessing: true }));
@@ -178,47 +283,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRitual(prev => ({ ...prev, countdown: count }));
   }, []);
 
-  const captureSoundPrint = useCallback((dataUrl: string) => {
-    setRitual(prev => ({
-      ...prev,
-      soundPrintDataUrl: dataUrl,
-      phase: 'complete',
-    }));
-    try {
-      if (dataUrl) {
-        sessionStorage.setItem('g4m3_sound_print', dataUrl);
-      }
-    } catch (e) {
-      console.warn('Persist sound print failed:', e);
-    }
-  }, []);
-
-  const setSoundPrint = useCallback(
-    (data: any) => {
-      if (data?.dataUrl) captureSoundPrint(data.dataUrl);
-    },
-    [captureSoundPrint],
-  );
-
-  const saveRecording = useCallback(
-    async (blob: Blob, finalEQ: number[]) => {
-      setAudio(prev => ({ ...prev, recordingBlob: blob }));
-      setRitual(prev => ({ ...prev, finalEQState: finalEQ, phase: 'capture', isRecording: false }));
-      try {
-        if (blob) {
-          const dataUrl = await blobToDataURL(blob);
-          sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
-        }
-        if (finalEQ?.length) {
-          sessionStorage.setItem('g4m3_final_eq', JSON.stringify(finalEQ));
-        }
-      } catch (e) {
-        console.warn('Persist recording failed:', e);
-      }
-    },
-    [],
-  );
-
   const reset = useCallback(() => {
     setAudio(initialAudioState);
     setRitual(initialRitualState);
@@ -233,120 +297,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Save ephemeral state so we can restore it after OAuth full-page redirect
-  const persistBeforeOAuth = useCallback(async () => {
-    try {
-      if (audio.recordingBlob) {
-        const dataUrl = await blobToDataURL(audio.recordingBlob);
-        sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
-      }
-      if (ritual.soundPrintDataUrl) {
-        sessionStorage.setItem('g4m3_sound_print', ritual.soundPrintDataUrl);
-      }
-      if (audio.file?.name) {
-        sessionStorage.setItem('g4m3_filename', audio.file.name);
-      }
-      if (ritual.finalEQState?.length) {
-        sessionStorage.setItem('g4m3_final_eq', JSON.stringify(ritual.finalEQState));
-      }
-      // This is now handled by the callback page, but keeping it is harmless
-      sessionStorage.setItem('post-auth-redirect', 'result');
-    } catch (e) {
-      console.warn('Persist before OAuth failed:', e);
-    }
-  }, [audio.recordingBlob, audio.file?.name, ritual.soundPrintDataUrl, ritual.finalEQState]);
+  const savePerformance = useCallback(async (gestureData: any, trackName: string, trackHash: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-  // FIXED: The signIn methods now point to the correct callback URL
-  const signInWithDiscord = useCallback(async () => {
-    try {
-      setAuth(prev => ({ ...prev, error: null }));
-      await persistBeforeOAuth();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'discord',
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      setAuth(prev => ({ ...prev, error: err.message }));
-    }
-  }, [persistBeforeOAuth]);
+    const { error } = await supabase.from('performances').insert({
+      user_id: user.id,
+      track_name: trackName,
+      track_hash: trackHash,
+      gesture_data: gestureData,
+      thumbnail_data_url: ritual.soundPrintDataUrl,
+    });
 
-  const signInWithGoogle = useCallback(async () => {
-    try {
-      setAuth(prev => ({ ...prev, error: null }));
-      await persistBeforeOAuth();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      setAuth(prev => ({ ...prev, error: err.message }));
-    }
-  }, [persistBeforeOAuth]);
-
-  // ... (signInWithEmail, signOut, savePerformance, and return are unchanged) ...
-  const signInWithEmail = useCallback(async (email: string, password: string) => {
-    setAuth(prev => ({ ...prev, error: null }));
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setAuth(prev => ({ ...prev, error: error.message }));
+      console.error('Error saving performance:', error);
     }
-    return { error };
-  }, []);
+  }, [ritual.soundPrintDataUrl]);
 
-  const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) console.error('Sign out error:', error);
-  }, []);
-
-  const savePerformance = useCallback(
-    async (gestureData: any, trackName: string, trackHash: string) => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { error } = await supabase.from('performances').insert({
-        user_id: user.id,
-        track_name: trackName,
-        track_hash: trackHash,
-        gesture_data: gestureData,
-        thumbnail_data_url: ritual.soundPrintDataUrl || null,
-      });
-
-      if (error) {
-        console.error('Error saving performance:', error);
-      }
-    },
-    [ritual.soundPrintDataUrl],
-  );
-  
   return (
-    <AppContext.Provider
-      value={{
-        audio,
-        state: audio,
-        ritual,
-        auth,
-        setFile,
-        setAudioFile,
-        setAudioBuffer,
-        setPlaying,
-        updateCurrentTime,
-        setRitualPhase,
-        setCountdown,
-        setSoundPrint,
-        captureSoundPrint,
-        saveRecording,
-        reset,
-        signInWithDiscord,
-        signInWithGoogle,
-        signInWithEmail,
-        signOut,
-        savePerformance,
-      }}
-    >
+    <AppContext.Provider value={{
+      audio,
+      state: audio,
+      ritual,
+      auth,
+      setFile,
+      setAudioFile,
+      setAudioBuffer,
+      setPlaying,
+      updateCurrentTime,
+      setRitualPhase,
+      setCountdown,
+      setSoundPrint,
+      captureSoundPrint,
+      saveRecording,
+      reset,
+      signInWithDiscord,
+      signInWithGoogle,
+      signInWithX, // ✅ ✅ ✅
+      signInWithEmail,
+      signOut,
+      savePerformance,
+    }}>
       {children}
     </AppContext.Provider>
   );
@@ -354,10 +345,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 export function useApp() {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within AppProvider');
-  }
+  if (!context) throw new Error('useApp must be used within AppProvider');
   return context;
 }
-
-export const useAppContext = useApp;

@@ -116,14 +116,12 @@ const ResultPage: React.FC = () => {
     run();
   }, []);
 
-  // If we ever recover a blob and state.recordingBlob is empty,
-  // prefer to use the recovered one for downloads.
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
 
   const getRedirectUrl = () => window.location.origin + '/auth/callback';
 
   const safePersistAndRedirect = useCallback(
-    async (provider: 'discord') => {
+    async (provider: 'discord' | 'twitter') => {
       trackEvent('social_login_attempt', { provider });
       sessionStorage.setItem('post-auth-redirect', '/result');
 
@@ -193,14 +191,16 @@ const ResultPage: React.FC = () => {
         />
 
         <div className="res-visualizer-screen">
-          {currentPrint && <img src={currentPrint} className="res-print-internal" alt="Sound Print" />}
+          {currentPrint && (
+            <img src={currentPrint} className="res-print-internal" alt="Sound Print" />
+          )}
         </div>
 
         <div className="res-interactive-layer">
           {isLoggedIn ? (
             <>
-              <button className="hs hs-download" onClick={downloadSession} aria-label="Download Video" />
               <button className="hs hs-home-li" onClick={goHome} aria-label="Return Home" />
+              <button className="hs hs-download" onClick={downloadSession} aria-label="Download Video" />
               <button className="hs hs-signout-li" onClick={handleSignOut} aria-label="Sign Out" />
             </>
           ) : (
@@ -211,6 +211,11 @@ const ResultPage: React.FC = () => {
                 aria-label="Login with Discord"
               />
               <button className="hs hs-home-lo" onClick={goHome} aria-label="Return Home" />
+              <button
+                className="hs hs-x"
+                onClick={() => safePersistAndRedirect('twitter')}
+                aria-label="Login with X"
+              />
             </>
           )}
         </div>
