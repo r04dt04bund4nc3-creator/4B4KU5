@@ -3,12 +3,17 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
+import { supabase } from '../lib/supabaseClient'; 
+import { claimRitualArtifact } from '../lib/manifold';
 
+// Assets
 import loggedOutSkin from '../assets/result-logged-out.webp';
 import loggedInSkin from '../assets/result-logged-in.webp';
 import ritualSlots from '../assets/ritual-slots.webp';
-import prize0 from '../assets/prize-0.webp';
 import steamSlotsHub from '../assets/steam-slots-hub.webp';
+import prize0 from '../assets/prize-0.webp';
+import prize3 from '../assets/prize-3.webp';
+import prize6 from '../assets/prize-6.webp';
 
 import './ResultPage.css';
 
@@ -49,76 +54,13 @@ async function loadBlob(key: string): Promise<Blob | null> {
 const RECOVERY_BLOB_KEY = 'res_recovery_blob';
 const RECOVERY_PRINT_KEY = 'res_recovery_print';
 
-type ResultView = 'summary' | 'slots' | 'prize-0' | 'hub';
+type ResultView = 'summary' | 'slots' | 'prize-0' | 'prize-3' | 'prize-6' | 'hub';
 
 type StreakState = {
-  day: number; // 1..6
-  lastDate: string; // YYYY-MM-DD
+  day: number;
+  lastDate: string;
+  nftClaimed: boolean;
 };
-
-function todayKey(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function parseDateKey(s: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  const yy = Number(m[1]);
-  const mm = Number(m[2]) - 1;
-  const dd = Number(m[3]);
-  return new Date(yy, mm, dd);
-}
-
-function diffDays(a: Date, b: Date) {
-  const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-  const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
-  return Math.round((utcB - utcA) / (24 * 60 * 60 * 1000));
-}
-
-function getAndUpdateStreak(): StreakState {
-  const key = 'g4m3_daily_streak';
-  const today = todayKey();
-  const raw = localStorage.getItem(key);
-
-  if (!raw) {
-    const s = { day: 1, lastDate: today };
-    localStorage.setItem(key, JSON.stringify(s));
-    return s;
-  }
-
-  try {
-    const prev: StreakState = JSON.parse(raw);
-    if (prev.lastDate === today) return prev;
-
-    const prevDate = parseDateKey(prev.lastDate);
-    const nowDate = parseDateKey(today);
-    if (!prevDate || !nowDate) {
-      const s = { day: 1, lastDate: today };
-      localStorage.setItem(key, JSON.stringify(s));
-      return s;
-    }
-
-    const d = diffDays(prevDate, nowDate);
-
-    if (d === 1) {
-      const nextDay = Math.min(6, (prev.day || 1) + 1);
-      const s = { day: nextDay, lastDate: today };
-      localStorage.setItem(key, JSON.stringify(s));
-      return s;
-    }
-
-    const s = { day: 1, lastDate: today };
-    localStorage.setItem(key, JSON.stringify(s));
-    return s;
-  } catch {
-    const s = { day: 1, lastDate: today };
-    localStorage.setItem(key, JSON.stringify(s));
-    return s;
-  }
-}
 
 const ResultPage: React.FC = () => {
   const navigate = useNavigate();
@@ -129,15 +71,78 @@ const ResultPage: React.FC = () => {
   const [recoveredPrint, setRecoveredPrint] = useState<string | null>(null);
   const [recoveredBlob, setRecoveredBlob] = useState<Blob | null>(null);
   const [canProceed, setCanProceed] = useState(false);
+  const [loadingStreak, setLoadingStreak] = useState(false);
+  const [claiming, setClaiming] = useState(false);
 
-  // FIXED: Removed 'setStreak' to satisfy the linter
-  const [streak] = useState<StreakState>(() => {
-    try {
-      return getAndUpdateStreak();
-    } catch {
-      return { day: 1, lastDate: todayKey() };
-    }
+  const [streak, setStreak] = useState<StreakState>({ 
+    day: 1, 
+    lastDate: new Date().toISOString().split('T')[0],
+    nftClaimed: false
   });
+
+  // Fetch streak from Supabase
+  const fetchStreak = useCallback(async () => {
+    if (!auth.user?.id) return;
+
+    setLoadingStreak(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      let { data, error } = await supabase
+        .from('user_streaks')
+        .select('*')
+        .eq('user_id', auth.user.id)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        const { data: newData, error: insertError } = await supabase
+          .from('user_streaks')
+          .insert({ user_id: auth.user.id, current_day: 1, last_visit: today, total_visits: 1 })
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        data = newData;
+      } else if (data) {
+        const lastVisit = new Date(data.last_visit);
+        const now = new Date();
+        const diffTime = Math.abs(now.getTime() - lastVisit.getTime());
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        
+        let newDay = data.current_day;
+        
+        if (data.last_visit !== today) {
+           if (diffDays === 1) {
+             newDay = Math.min(data.current_day + 1, 6);
+           } else if (diffDays > 1) {
+             newDay = 1;
+           }
+           
+           await supabase.from('user_streaks').update({
+             current_day: newDay,
+             last_visit: today,
+             total_visits: data.total_visits + 1
+           }).eq('user_id', auth.user.id);
+        }
+
+        data.current_day = newDay;
+      }
+
+      setStreak({
+        day: data?.current_day || 1,
+        lastDate: data?.last_visit || today,
+        nftClaimed: data?.nft_claimed || false
+      });
+
+    } catch (err) {
+      console.error("Streak sync error:", err);
+    } finally {
+      setLoadingStreak(false);
+    }
+  }, [auth.user?.id]);
+
+  useEffect(() => {
+    if (auth.user?.id) fetchStreak();
+  }, [auth.user?.id, fetchStreak]);
 
   useEffect(() => {
     const run = async () => {
@@ -150,7 +155,7 @@ const ResultPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (view === 'prize-0') {
+    if (view.startsWith('prize-')) {
       setCanProceed(false);
       const timer = setTimeout(() => setCanProceed(true), 2000);
       return () => clearTimeout(timer);
@@ -179,7 +184,6 @@ const ResultPage: React.FC = () => {
       alert('No recording found. Please try the ritual again.');
       return;
     }
-
     const url = URL.createObjectURL(effectiveBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -192,6 +196,21 @@ const ResultPage: React.FC = () => {
     trackEvent('download_and_spin');
     setView('slots');
   }, [effectiveBlob, trackEvent]);
+
+  const handleClaim = async () => {
+    if (!auth.user?.id) return;
+    setClaiming(true);
+    try {
+      await claimRitualArtifact(auth.user.id);
+      await supabase.from('user_streaks').update({ nft_claimed: true }).eq('user_id', auth.user.id);
+      setStreak(prev => ({ ...prev, nftClaimed: true }));
+      trackEvent('nft_claimed', { day: 6 });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   const goHome = useCallback(() => {
     reset();
@@ -207,8 +226,13 @@ const ResultPage: React.FC = () => {
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
   const dayText = useMemo(() => {
-    return `DAY ${streak.day} OF 6: Come back tomorrow. Six consecutive days unlock the NFT for free.`;
-  }, [streak.day]);
+    if (loadingStreak) return "ALIGNING PLANETARY GEARS...";
+    if (streak.day === 6) {
+      if (streak.nftClaimed) return "CYCLE COMPLETE. ARTIFACT SECURED.";
+      return "DAY 6 OF 6: THE GATE IS OPEN.";
+    }
+    return `DAY ${streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
+  }, [streak, loadingStreak]);
 
   if (view === 'hub') {
     return (
@@ -229,59 +253,52 @@ const ResultPage: React.FC = () => {
         <div className="res-machine-container">
           <img src={ritualSlots} className="res-background-image" alt="Slot Ritual" />
           <div className="res-interactive-layer">
-            <button className="hs hs-slot-left" onClick={() => setView('prize-0')} aria-label="$0" />
-            <button className="hs hs-slot-center" onClick={() => setView('prize-0')} aria-label="$6" />
-            <button className="hs hs-slot-right" onClick={() => setView('prize-0')} aria-label="$3" />
+            <button className="hs hs-slot-left" onClick={() => setView('prize-0')} aria-label="$0 Reward" />
+            <button className="hs hs-slot-center" onClick={() => setView('prize-6')} aria-label="$6 Subscription" />
+            <button className="hs hs-slot-right" onClick={() => setView('prize-3')} aria-label="$3 Subscription" />
           </div>
         </div>
       </div>
     );
   }
 
-  if (view === 'prize-0') {
-    return (
-      <div 
-        className="res-page-root" 
-        onClick={() => canProceed && setView('hub')}
-        style={{ cursor: canProceed ? 'pointer' : 'wait' }}
-      >
-        <div className="res-machine-container">
-          <img src={prize0} className="res-background-image" alt="Prize 0" />
-          <div className="prize-shelf-text">
-            {dayText}
-          </div>
-          {canProceed && (
-            <div style={{
-              position: 'absolute',
-              bottom: '10%',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: 'rgba(201, 255, 216, 0.6)',
-              fontSize: '14px',
-              pointerEvents: 'none'
-            }}>
-              Tap to continue
-            </div>
-          )}
-        </div>
+  const renderPrizeScreen = (imgSrc: string, text: string, showClaimBtn: boolean = false) => (
+    <div 
+      className="res-page-root" 
+      onClick={() => canProceed && !showClaimBtn && setView('hub')}
+      style={{ cursor: canProceed && !showClaimBtn ? 'pointer' : 'default' }}
+    >
+      <div className="res-machine-container">
+        <img src={imgSrc} className="res-background-image" alt="Prize" />
+        <div className="prize-shelf-text">{text}</div>
+
+        {showClaimBtn && canProceed && (
+           <div className="claim-container">
+             <button className="manifold-claim-btn" onClick={(e) => { e.stopPropagation(); handleClaim(); }} disabled={claiming}>
+               {claiming ? "MINTING..." : "CLAIM ARTIFACT"}
+             </button>
+             <div className="claim-subtext" onClick={() => setView('hub')}>or continue to hub</div>
+           </div>
+        )}
+
+        {canProceed && !showClaimBtn && (
+          <div className="tap-continue-hint">Tap to continue</div>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
+
+  if (view === 'prize-0') return renderPrizeScreen(prize0, dayText, streak.day === 6 && !streak.nftClaimed);
+  if (view === 'prize-3') return renderPrizeScreen(prize3, "ANNUAL SUBSCRIPTION: MONTHLY NFT DROPS ACTIVATED.");
+  if (view === 'prize-6') return renderPrizeScreen(prize6, "MONTHLY SUBSCRIPTION: SIGNAL BOOSTED.");
 
   return (
     <div className="res-page-root">
       <div className="res-machine-container">
-        <img
-          src={isLoggedIn ? loggedInSkin : loggedOutSkin}
-          className="res-background-image"
-          alt=""
-          draggable={false}
-        />
-
+        <img src={isLoggedIn ? loggedInSkin : loggedOutSkin} className="res-background-image" alt="" draggable={false} />
         <div className="res-visualizer-screen">
           {currentPrint && <img src={currentPrint} className="res-print-internal" alt="Sound Print" />}
         </div>
-
         <div className="res-interactive-layer">
           {isLoggedIn ? (
             <>
