@@ -65,10 +65,9 @@ type StreakState = {
 
 // Timing
 const REVEAL_DELAY_MS = 2000;
-const MONTHLY_TIMEOUT_MS = 20000; 
+const MONTHLY_TIMEOUT_MS = 20000;
 const ANNUAL_TIMEOUT_MS = 30000;
 
-// Standalone copy for both paths
 const PRIZE_TEXTS = {
   6: {
     title: 'MONTHLY KEEPER',
@@ -80,7 +79,7 @@ const PRIZE_TEXTS = {
   3: {
     title: 'ANNUAL ARCHIVIST',
     headline: '$3/month · 1 NFT per month',
-    body: 'Access the full 216-artifact archive for one year. Claim one NFT each month. Total claim value over 12 months: $468, $2808 in two years, $16,848 in three years.',
+    body: 'Access the full 216-artifact archive for one year. Claim one NFT each month. claim value over 12 months: $468, $2808 in two years, $16,848 in three years.',
     scarcity: 'Each new artifact is rarer than the last: 216 mints for NFT #1 → 1 mint of NFT #216.',
     cta: 'Get there first! TAP to lock in your position.',
   },
@@ -109,9 +108,7 @@ const ResultPage: React.FC = () => {
     subscriptionActive: false,
   });
 
-  // 🚨 SIMPLIFIED AUTH CHECK
-  // We derive isLoggedIn directly from auth.user. The AppContext handles the loading state.
-  // If auth.isLoading is true, we show a minimal spinner overlay instead of replacing the whole component.
+  // Derive state safely
   const isLoggedIn = !!auth.user?.id;
   const isAuthLoading = auth.isLoading;
 
@@ -120,9 +117,7 @@ const ResultPage: React.FC = () => {
     (source: string) => {
       trackEvent('manifold_open', { source });
       const win = window.open(MANIFOLD_NFT_URL, '_blank', 'noopener,noreferrer');
-      if (!win) {
-        window.location.href = MANIFOLD_NFT_URL;
-      }
+      if (!win) window.location.href = MANIFOLD_NFT_URL;
     },
     [trackEvent]
   );
@@ -256,7 +251,6 @@ const ResultPage: React.FC = () => {
     if (auth.user?.id) fetchStreak();
   }, [auth.user?.id, fetchStreak]);
 
-  // Calculate data
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
@@ -462,8 +456,6 @@ const ResultPage: React.FC = () => {
   if (view === 'prize-6') return renderPrizeScreen('6');
 
   // SUMMARY (LOGIN) VIEW
-  // 🚨 KEY FIX: We always render the base structure, but show a loading overlay if auth is still initializing.
-  // This ensures the visual state (sound print) is preserved while we wait for auth to resolve.
   return (
     <div className="res-page-root">
       <div className="res-machine-container">
@@ -486,8 +478,8 @@ const ResultPage: React.FC = () => {
             </>
           )}
         </div>
-        
-        {/* 🚨 LOADING OVERLAY: Shows on top of the screen while auth is initializing */}
+
+        {/* LOADING OVERLAY - Shows on top of content, doesn't replace it */}
         {isAuthLoading && (
           <div className="auth-loading-overlay">
             <div className="loading-spinner">SYNCING ASTRAL SIGNAL...</div>
