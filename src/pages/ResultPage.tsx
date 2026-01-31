@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { supabase } from '../lib/supabaseClient';
-import { claimRitualArtifact, MANIFOLD_NFT_URL } from '../lib/manifold';
+import { claimRitualArtifact } from '../lib/manifold';
 
 // Assets
 import loggedOutSkin from '../assets/result-logged-out.webp';
@@ -110,11 +110,9 @@ const ResultPage: React.FC = () => {
     subscriptionActive: false,
   });
 
-  // 🚨 NEW: Check for OAuth tokens in URL hash
-  // If found, force a full page reload to ensure session is ready.
+  // 🚨 Check for OAuth tokens in URL hash
   const hasAuthParams = /access_token|refresh_token|code/.test(location.hash || location.search);
 
-  // Derive isLoggedIn safely
   const isLoggedIn = !!auth.user?.id;
 
   const goHome = useCallback(() => {
@@ -133,6 +131,9 @@ const ResultPage: React.FC = () => {
       setSubscriptionTier(tier || 'unknown');
       setIsConfirmed(true);
       setView('hub');
+      // Update streak state locally so UI updates immediately
+      setStreak(prev => ({ ...prev, subscriptionActive: true }));
+      
       setTimeout(() => {
         try { window.history.replaceState({}, '', '/result'); } catch {}
       }, 1500);
@@ -145,10 +146,9 @@ const ResultPage: React.FC = () => {
     }
   }, [location.search]);
 
-  // 🚨 CRITICAL FIX: Force reload after OAuth login
+  // Force reload after OAuth login
   useEffect(() => {
     if (hasAuthParams && !isLoggedIn) {
-      // Wait 1 second to let Supabase finish its internal setup, then reload.
       const timer = setTimeout(() => {
         window.location.reload();
       }, 1000);
@@ -176,9 +176,9 @@ const ResultPage: React.FC = () => {
     }
   }, [view]);
 
-  // AUTO-TIMEOUT LOGIC: Sends user to Home after inactivity
+  // AUTO-TIMEOUT LOGIC
   useEffect(() => {
-    if (isConfirmed) return; // Don't timeout if confirmation overlay is showing
+    if (isConfirmed) return;
 
     let timeoutMs = 0;
     if (view === 'prize-6') timeoutMs = MONTHLY_TIMEOUT_MS;
@@ -297,27 +297,32 @@ const ResultPage: React.FC = () => {
     setView('slots');
   }, [effectiveBlob, trackEvent]);
 
-  // Manifold helper for Claim Button
-  const openManifold = useCallback(
-    (source: string) => {
-      trackEvent('manifold_open', { source });
-      const win = window.open(MANIFOLD_NFT_URL, '_blank', 'noopener,noreferrer');
-      if (!win) window.location.href = MANIFOLD_NFT_URL;
-    },
-    [trackEvent]
-  );
-
+  // ---------------------------------------------
+  // UPDATED: Central Claim Logic
+  // ---------------------------------------------
   const handleClaim = async () => {
     if (!auth.user?.id) return;
     setClaiming(true);
     try {
-      await claimRitualArtifact(auth.user.id);
+      // 1. Get the link and record claim in DB
+      const result = await claimRitualArtifact(auth.user.id);
+      
+      // 2. Update streaks table just in case (legacy support)
       await supabase.from('user_streaks').update({ nft_claimed: true }).eq('user_id', auth.user.id);
       setStreak(prev => ({ ...prev, nftClaimed: true }));
-      trackEvent('nft_claimed', { day: 6 });
-      openManifold('claim');
+      
+      trackEvent('nft_claimed', { success: result.success });
+
+      if (result.success && result.claimUrl) {
+        // 3. Open Manifold
+        const win = window.open(result.claimUrl, '_blank', 'noopener,noreferrer');
+        if (!win) window.location.href = result.claimUrl;
+      } else {
+        alert(result.message || 'Error preparing artifact.');
+      }
     } catch (e) {
       console.error(e);
+      alert('Network error. Please try again.');
     } finally {
       setClaiming(false);
     }
@@ -383,7 +388,6 @@ const ResultPage: React.FC = () => {
 
             {!isConfirmed && (
               <>
-                {/* HUB NAVIGATION: Lead to Prize Screens */}
                 <button className="hs hs-hub-left" onClick={() => setView('prize-0')} aria-label="$0 Path" />
                 <button className="hs hs-hub-center" onClick={() => setView('prize-6')} aria-label="$6 Path" />
                 <button className="hs hs-hub-right" onClick={() => setView('prize-3')} aria-label="$3 Path" />
@@ -415,15 +419,19 @@ const ResultPage: React.FC = () => {
   // PRIZE VIEWS
   const renderPrizeScreen = (tier: '6' | '3' | '0') => {
     const imgSrc = tier === '6' ? prize6 : tier === '3' ? prize3 : prize0;
-    const showClaimBtn = tier === '0' && streak.day === 6 && !streak.nftClaimed;
+    
+    // Logic: Show Claim Button IF ($0 path & day 6) OR (Paid path & Active Sub)
+    const isFreeClaimable = tier === '0' && streak.day === 6 && !streak.nftClaimed;
+    const isSubscriberClaimable = (tier === '6' || tier === '3') && streak.subscriptionActive;
+    
+    const showClaimBtn = isFreeClaimable || isSubscriberClaimable;
     const textData = tier === '6' ? PRIZE_TEXTS[6] : tier === '3' ? PRIZE_TEXTS[3] : null;
 
     const handleClick = () => {
       if (!canProceed) return;
-      if (showClaimBtn) return;
+      if (showClaimBtn) return; // Don't redirect if claim button is present, let them click the button
       if (tier === '6') return handleStripeCheckout('prize-6');
       if (tier === '3') return handleStripeCheckout('prize-3');
-      // $0 path leads to Hub, or waits for timeout to Home
       setView('hub');
     };
 
@@ -431,22 +439,40 @@ const ResultPage: React.FC = () => {
       <div className="res-page-root" onClick={handleClick} style={{ cursor: canProceed && !showClaimBtn ? 'pointer' : 'default' }}>
         <div className="res-machine-container">
           <img src={imgSrc} className="res-background-image" alt="Prize" />
+          
+          {/* Free Path Text */}
           {tier === '0' && <div className="prize-shelf-text legacy">{dayText}</div>}
-          {textData && (
+          
+          {/* Paid Path Text (Only show if NOT yet subscribed) */}
+          {textData && !streak.subscriptionActive && (
             <div className="prize-shelf-text sacred-text-container">
               <h2 className="sacred-title">{textData.title}</h2>
               <div className="sacred-headline">{textData.headline}</div>
               <p className="sacred-body">{textData.body}</p>
               <p className="sacred-scarcity">{textData.scarcity}</p>
+              
+              {/* Timeout Warnings */}
               {tier === '3' && canProceed && (
                 <div className="auto-redirect-warning">Returning to start in {Math.round(ANNUAL_TIMEOUT_MS / 1000)}s...</div>
               )}
               {tier === '6' && canProceed && (
                 <div className="auto-redirect-warning">Returning to start in {Math.round(MONTHLY_TIMEOUT_MS / 1000)}s...</div>
               )}
+              
               <div className="sacred-cta">{checkoutBusy ? 'OPENING CHECKOUT...' : textData.cta}</div>
             </div>
           )}
+
+          {/* SUBSCRIBER MESSAGE (If subscribed, replace sales text with this) */}
+          {(tier === '6' || tier === '3') && streak.subscriptionActive && (
+             <div className="prize-shelf-text sacred-text-container">
+               <h2 className="sacred-title">MEMBER ACCESS</h2>
+               <div className="sacred-headline">Subscription Active</div>
+               <p className="sacred-body">The archive is open. Claim your monthly artifact below.</p>
+             </div>
+          )}
+
+          {/* The Claim Button (Shared Logic) */}
           {showClaimBtn && canProceed && (
             <div className="claim-container">
               <button className="manifold-claim-btn" onClick={(e) => { e.stopPropagation(); handleClaim(); }} disabled={claiming}>
@@ -455,6 +481,7 @@ const ResultPage: React.FC = () => {
               <div className="claim-subtext" onClick={(e) => { e.stopPropagation(); setView('hub'); }}>or return to hub</div>
             </div>
           )}
+          
           {canProceed && !showClaimBtn && !textData && <div className="tap-continue-hint">Tap to continue</div>}
         </div>
       </div>
