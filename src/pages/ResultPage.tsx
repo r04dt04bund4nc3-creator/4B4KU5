@@ -63,12 +63,12 @@ type StreakState = {
   subscriptionActive: boolean;
 };
 
-// Timing
+// Timing Constants
 const REVEAL_DELAY_MS = 2000;
 const MONTHLY_TIMEOUT_MS = 20000; 
 const ANNUAL_TIMEOUT_MS = 30000;
+const HUB_TIMEOUT_MS = 30000; // 30s on hub then home
 
-// Standalone copy for both paths
 const PRIZE_TEXTS = {
   6: {
     title: 'MONTHLY KEEPER',
@@ -160,25 +160,23 @@ const ResultPage: React.FC = () => {
     }
   }, [view]);
 
-  // Monthly auto-resolve - NOW NAVIGATES HOME
+  // AUTO-TIMEOUT LOGIC: Sent home after periods of inactivity
   useEffect(() => {
-    if (view !== 'prize-6' || !canProceed) return;
-    const t = setTimeout(() => {
-      goHome();
-      trackEvent('subscription_timeout', { tier: 'monthly' });
-    }, MONTHLY_TIMEOUT_MS);
-    return () => clearTimeout(t);
-  }, [view, canProceed, trackEvent, goHome]);
+    if (isConfirmed) return; // Don't auto-navigate if the CONFIRMED overlay is up
 
-  // Annual auto-resolve - NOW NAVIGATES HOME
-  useEffect(() => {
-    if (view !== 'prize-3' || !canProceed) return;
-    const t = setTimeout(() => {
-      goHome();
-      trackEvent('subscription_timeout', { tier: 'annual' });
-    }, ANNUAL_TIMEOUT_MS);
-    return () => clearTimeout(t);
-  }, [view, canProceed, trackEvent, goHome]);
+    let timeoutMs = 0;
+    if (view === 'prize-6') timeoutMs = MONTHLY_TIMEOUT_MS;
+    else if (view === 'prize-3') timeoutMs = ANNUAL_TIMEOUT_MS;
+    else if (view === 'hub') timeoutMs = HUB_TIMEOUT_MS;
+
+    if (timeoutMs > 0) {
+      const t = setTimeout(() => {
+        trackEvent('view_timeout', { view });
+        goHome();
+      }, timeoutMs);
+      return () => clearTimeout(t);
+    }
+  }, [view, isConfirmed, goHome, trackEvent]);
 
   // Fetch streak
   const fetchStreak = useCallback(async () => {
@@ -247,6 +245,7 @@ const ResultPage: React.FC = () => {
     if (auth.user?.id) fetchStreak();
   }, [auth.user?.id, fetchStreak]);
 
+  // Visuals recovery
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
@@ -282,6 +281,16 @@ const ResultPage: React.FC = () => {
     setView('slots');
   }, [effectiveBlob, trackEvent]);
 
+  // Manifold helper for Claim Button only
+  const openManifold = useCallback(
+    (source: string) => {
+      trackEvent('manifold_open', { source });
+      const win = window.open(MANIFOLD_NFT_URL, '_blank', 'noopener,noreferrer');
+      if (!win) window.location.href = MANIFOLD_NFT_URL;
+    },
+    [trackEvent]
+  );
+
   const handleClaim = async () => {
     if (!auth.user?.id) return;
     setClaiming(true);
@@ -290,8 +299,7 @@ const ResultPage: React.FC = () => {
       await supabase.from('user_streaks').update({ nft_claimed: true }).eq('user_id', auth.user.id);
       setStreak(prev => ({ ...prev, nftClaimed: true }));
       trackEvent('nft_claimed', { day: 6 });
-      const win = window.open(MANIFOLD_NFT_URL, '_blank', 'noopener,noreferrer');
-      if (!win) window.location.href = MANIFOLD_NFT_URL;
+      openManifold('claim');
     } catch (e) {
       console.error(e);
     } finally {
@@ -306,7 +314,6 @@ const ResultPage: React.FC = () => {
         return;
       }
       if (checkoutBusy) return;
-
       setCheckoutBusy(true);
       trackEvent('stripe_checkout_initiated', { tier });
 
@@ -317,30 +324,19 @@ const ResultPage: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tier, user_id: auth.user.id, return_url: `${window.location.origin}/result` }),
         });
-
-        const contentType = res.headers.get('content-type');
-        let json;
-        if (contentType && contentType.includes('application/json')) {
-          json = await res.json();
-        } else {
-          const text = await res.text();
-          throw new Error(text || `Server error: ${res.status}`);
-        }
-
-        if (!res.ok) throw new Error(json?.error || `Request failed: ${res.status}`);
-        if (!json?.url) throw new Error('No checkout URL returned');
-
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || `Request failed`);
         window.location.href = json.url;
       } catch (err) {
         console.error('Checkout error:', err);
-        alert((err as Error).message || 'Failed to open checkout. Please try again.');
+        alert('Failed to open checkout. Please try again.');
       } finally {
         setCheckoutBusy(false);
       }
     },
     [auth.user?.id, checkoutBusy, trackEvent]
   );
-  
+
   const handleSignOut = useCallback(async () => { await signOut(); navigate('/'); }, [navigate, signOut]);
 
   const dayText = useMemo(() => {
@@ -369,12 +365,12 @@ const ResultPage: React.FC = () => {
               </div>
             )}
 
-            {/* FIX: Hub buttons now navigate to prize views */}
             {!isConfirmed && (
               <>
-                <button className="hs hs-hub-left" onClick={() => setView('prize-0')} aria-label="$0 Path" />
-                <button className="hs hs-hub-center" onClick={() => setView('prize-6')} aria-label="$6 Subscription" />
-                <button className="hs hs-hub-right" onClick={() => setView('prize-3')} aria-label="$3 Subscription" />
+                {/* HUB HOTSPOTS: Now navigation triggers instead of Manifold opens */}
+                <button className="hs hs-slot-left" onClick={() => setView('prize-0')} aria-label="$0 Path" />
+                <button className="hs hs-slot-center" onClick={() => setView('prize-6')} aria-label="$6 Path" />
+                <button className="hs hs-slot-right" onClick={() => setView('prize-3')} aria-label="$3 Path" />
               </>
             )}
             <button className="hs hs-hub-home" onClick={goHome} aria-label="Return Home" />
@@ -425,12 +421,6 @@ const ResultPage: React.FC = () => {
               <div className="sacred-headline">{textData.headline}</div>
               <p className="sacred-body">{textData.body}</p>
               <p className="sacred-scarcity">{textData.scarcity}</p>
-              {tier === '3' && canProceed && (
-                <div className="auto-redirect-warning">Returning to start in {Math.round(ANNUAL_TIMEOUT_MS / 1000)}s...</div>
-              )}
-              {tier === '6' && canProceed && (
-                <div className="auto-redirect-warning">Returning to start in {Math.round(MONTHLY_TIMEOUT_MS / 1000)}s...</div>
-              )}
               <div className="sacred-cta">{checkoutBusy ? 'OPENING CHECKOUT...' : textData.cta}</div>
             </div>
           )}
@@ -476,7 +466,6 @@ const ResultPage: React.FC = () => {
           )}
         </div>
 
-        {/* LOADING OVERLAY */}
         {isAuthLoading && (
           <div className="auth-loading-overlay">
             <div className="loading-spinner">SYNCING ASTRAL SIGNAL...</div>
