@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
 import { useAnalytics } from '../hooks/useAnalytics';
 import { supabase } from '../lib/supabaseClient';
-import { claimRitualArtifact, MANIFOLD_NFT_URL } from '../lib/manifold';
+import { claimRitualArtifact } from '../lib/manifold';
 
 // Assets
 import loggedOutSkin from '../assets/result-logged-out.webp';
@@ -65,9 +65,13 @@ type StreakState = {
 
 // Timing
 const REVEAL_DELAY_MS = 2000;
-const MONTHLY_TIMEOUT_MS = 20000;
-const ANNUAL_TIMEOUT_MS = 30000;
+const MONTHLY_TIMEOUT_MS = 20000; // 20s to read then auto-hub
+const ANNUAL_TIMEOUT_MS = 30000;  // 30s to read then auto-hub
 
+// Manifold NFT preview / claim page
+const MANIFOLD_NFT_URL = 'https://manifold.xyz/@r41nb0w/id/4078311664';
+
+// Standalone copy for both paths
 const PRIZE_TEXTS = {
   6: {
     title: 'MONTHLY KEEPER',
@@ -110,13 +114,6 @@ const ResultPage: React.FC = () => {
 
   const isLoggedIn = !!auth.user?.id;
 
-  // Helper for mobile-friendly redirects
-  const openExternal = useCallback((url: string) => {
-    // Attempt new tab, fallback to same window if Android/Tablet blocks popups
-    const w = window.open(url, '_blank');
-    if (!w) window.location.href = url;
-  }, []);
-
   // Handle Stripe return
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -151,7 +148,7 @@ const ResultPage: React.FC = () => {
     run();
   }, []);
 
-  // Reveal timer
+  // Reveal timer (2s before clickable)
   useEffect(() => {
     if (view.startsWith('prize-')) {
       setCanProceed(false);
@@ -160,7 +157,7 @@ const ResultPage: React.FC = () => {
     }
   }, [view]);
 
-  // Auto-resolve timers
+  // Monthly auto-resolve to hub (NEW)
   useEffect(() => {
     if (view !== 'prize-6' || !canProceed) return;
     const t = setTimeout(() => {
@@ -170,6 +167,7 @@ const ResultPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [view, canProceed, trackEvent]);
 
+  // Annual auto-resolve to hub
   useEffect(() => {
     if (view !== 'prize-3' || !canProceed) return;
     const t = setTimeout(() => {
@@ -281,21 +279,30 @@ const ResultPage: React.FC = () => {
     setView('slots');
   }, [effectiveBlob, trackEvent]);
 
-  // Logic: Claim NFT and Redirect
+  // Helper: open Manifold NFT page from different sources
+  const openManifold = useCallback(
+    (source: string) => {
+      trackEvent('manifold_open', { source });
+      const win = window.open(MANIFOLD_NFT_URL, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        // Fallback if popup blocked – navigate same tab
+        window.location.href = MANIFOLD_NFT_URL;
+      }
+    },
+    [trackEvent]
+  );
+
   const handleClaim = async () => {
     if (!auth.user?.id) return;
     setClaiming(true);
     try {
-      const response = await claimRitualArtifact(auth.user.id);
-      
+      await claimRitualArtifact(auth.user.id);
       await supabase.from('user_streaks').update({ nft_claimed: true }).eq('user_id', auth.user.id);
       setStreak(prev => ({ ...prev, nftClaimed: true }));
       trackEvent('nft_claimed', { day: 6 });
 
-      // After updating DB, send them to Manifold
-      if (response.claimUrl) {
-        openExternal(response.claimUrl);
-      }
+      // After recording the claim, open the Manifold NFT page
+      openManifold('claim');
     } catch (e) {
       console.error(e);
     } finally {
@@ -303,7 +310,7 @@ const ResultPage: React.FC = () => {
     }
   };
 
-  // Stripe checkout
+  // Stripe checkout with defensive error handling
   const handleStripeCheckout = useCallback(
     async (tier: 'prize-6' | 'prize-3') => {
       if (!auth.user?.id) {
@@ -317,6 +324,7 @@ const ResultPage: React.FC = () => {
 
       try {
         const endpoint = `${window.location.origin}/api/create-checkout`;
+        
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -327,8 +335,10 @@ const ResultPage: React.FC = () => {
           }),
         });
 
+        // Handle non-JSON responses (like HTML error pages)
         const contentType = res.headers.get('content-type');
         let json;
+        
         if (contentType && contentType.includes('application/json')) {
           json = await res.json();
         } else {
@@ -336,8 +346,13 @@ const ResultPage: React.FC = () => {
           throw new Error(text || `Server error: ${res.status}`);
         }
 
-        if (!res.ok) throw new Error(json?.error || `Request failed: ${res.status}`);
-        if (!json?.url) throw new Error('No checkout URL returned');
+        if (!res.ok) {
+          throw new Error(json?.error || `Request failed: ${res.status}`);
+        }
+
+        if (!json?.url) {
+          throw new Error('No checkout URL returned');
+        }
 
         window.location.href = json.url;
       } catch (err) {
@@ -369,7 +384,7 @@ const ResultPage: React.FC = () => {
     return `DAY ${streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
   }, [streak, loadingStreak]);
 
-  // VIEW: HUB (Steam Slots page)
+  // HUB
   if (view === 'hub') {
     return (
       <div className={`res-page-root ${isConfirmed ? 'confirmed-state' : ''}`}>
@@ -392,23 +407,26 @@ const ResultPage: React.FC = () => {
               </div>
             )}
 
-            {/* Portal Hotspots to Manifold for all paths */}
+            {/* New: three portal hotspots that open Manifold NFT page */}
             {!isConfirmed && (
               <>
-                <button 
-                  className="hs hs-hub-left" 
-                  onClick={() => openExternal(MANIFOLD_NFT_URL)} 
-                  aria-label="View NFT 1" 
+                <button
+                  className="hs"
+                  style={{ left: '28.5%', top: '50%', width: '19%', height: '34%' }}
+                  onClick={() => openManifold('hub-left')}
+                  aria-label="Open artifact portal (left)"
                 />
-                <button 
-                  className="hs hs-hub-center" 
-                  onClick={() => openExternal(MANIFOLD_NFT_URL)} 
-                  aria-label="View NFT 2" 
+                <button
+                  className="hs"
+                  style={{ left: '50%', top: '50%', width: '19%', height: '34%' }}
+                  onClick={() => openManifold('hub-center')}
+                  aria-label="Open artifact portal (center)"
                 />
-                <button 
-                  className="hs hs-hub-right" 
-                  onClick={() => openExternal(MANIFOLD_NFT_URL)} 
-                  aria-label="View NFT 3" 
+                <button
+                  className="hs"
+                  style={{ left: '71.5%', top: '50%', width: '19%', height: '34%' }}
+                  onClick={() => openManifold('hub-right')}
+                  aria-label="Open artifact portal (right)"
                 />
               </>
             )}
@@ -420,7 +438,7 @@ const ResultPage: React.FC = () => {
     );
   }
 
-  // VIEW: SLOTS
+  // SLOTS
   if (view === 'slots') {
     return (
       <div className="res-page-root">
@@ -509,7 +527,7 @@ const ResultPage: React.FC = () => {
   if (view === 'prize-3') return renderPrizeScreen('3');
   if (view === 'prize-6') return renderPrizeScreen('6');
 
-  // VIEW: SUMMARY
+  // SUMMARY
   return (
     <div className="res-page-root">
       <div className="res-machine-container">
