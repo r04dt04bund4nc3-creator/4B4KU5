@@ -109,10 +109,12 @@ const ResultPage: React.FC = () => {
     subscriptionActive: false,
   });
 
+  // 🚨 SIMPLIFIED AUTH CHECK
+  // We derive isLoggedIn directly from auth.user. The AppContext handles the loading state.
+  // If auth.isLoading is true, we show a minimal spinner overlay instead of replacing the whole component.
   const isLoggedIn = !!auth.user?.id;
+  const isAuthLoading = auth.isLoading;
 
-  // 1. ALL HOOKS MUST RUN BEFORE ANY RETURNS
-  
   // Helper: open Manifold NFT page
   const openManifold = useCallback(
     (source: string) => {
@@ -148,7 +150,7 @@ const ResultPage: React.FC = () => {
     }
   }, [location.search]);
 
-  // Recover blobs - THIS RESTORES THE VISUALS
+  // Recover blobs
   useEffect(() => {
     const run = async () => {
       const savedPrint = sessionStorage.getItem(RECOVERY_PRINT_KEY);
@@ -254,7 +256,7 @@ const ResultPage: React.FC = () => {
     if (auth.user?.id) fetchStreak();
   }, [auth.user?.id, fetchStreak]);
 
-  // 2. CALCULATE DATA - THIS IS YOUR ORIGINAL LOGIC
+  // Calculate data
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
   const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
@@ -360,17 +362,6 @@ const ResultPage: React.FC = () => {
     return `DAY ${streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
   }, [streak, loadingStreak]);
 
-  // 🚨 CRITICAL FIX: Safe Loading State
-  // We place this check AFTER all hooks have been declared to respect React rules,
-  // but BEFORE any UI rendering.
-  if (auth.isLoading) {
-    return (
-      <div className="res-page-root">
-        <div className="loading-spinner">SYNCING ASTRAL SIGNAL...</div>
-      </div>
-    );
-  }
-
   // HUB VIEW
   if (view === 'hub') {
     return (
@@ -471,6 +462,8 @@ const ResultPage: React.FC = () => {
   if (view === 'prize-6') return renderPrizeScreen('6');
 
   // SUMMARY (LOGIN) VIEW
+  // 🚨 KEY FIX: We always render the base structure, but show a loading overlay if auth is still initializing.
+  // This ensures the visual state (sound print) is preserved while we wait for auth to resolve.
   return (
     <div className="res-page-root">
       <div className="res-machine-container">
@@ -493,6 +486,13 @@ const ResultPage: React.FC = () => {
             </>
           )}
         </div>
+        
+        {/* 🚨 LOADING OVERLAY: Shows on top of the screen while auth is initializing */}
+        {isAuthLoading && (
+          <div className="auth-loading-overlay">
+            <div className="loading-spinner">SYNCING ASTRAL SIGNAL...</div>
+          </div>
+        )}
       </div>
     </div>
   );
