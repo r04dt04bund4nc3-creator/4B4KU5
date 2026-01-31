@@ -250,3 +250,36 @@
 .sacred-confirmation-overlay {
   z-index: 20;
 }
+/* src/pages/ResultPage.css */
+
+/* ... (keep all your existing styles) ... */
+
+/* AUTH LOADING OVERLAY */
+.auth-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 16, 0.85); /* Dark semi-transparent */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100; /* Above everything else */
+  pointer-events: none; /* Let clicks pass through if needed, though we disable buttons anyway */
+}
+
+.loading-spinner {
+  color: #00ff9d;
+  font-family: 'Courier New', monospace;
+  font-size: 1.2rem;
+  text-shadow: 0 0 10px #00ff9d;
+  animation: pulse-text 2s infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Ensure the overlay is hidden when not loading */
+.auth-loading-overlay:empty {
+  display: none;
+}
