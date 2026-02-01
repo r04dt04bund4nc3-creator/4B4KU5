@@ -306,14 +306,23 @@ const ResultPage: React.FC = () => {
   const handleClaim = async () => {
     if (!auth.user?.id) return;
     setClaiming(true);
+  
     try {
-      // Simulate (or actually trigger) Manifold claim. For now, it just returns the URL.
-      await claimRitualArtifact(auth.user.id); 
-      // Update Supabase to mark NFT as claimed for this cycle
-      await supabase.from('user_streaks').update({ nft_claimed: true }).eq('user_id', auth.user.id);
-      setStreak(prev => ({ ...prev, nftClaimed: true })); // Update local state
+      // 1. Run the claim hook (logging/logic in lib/manifold)
+      await claimRitualArtifact(auth.user.id);
+  
+      // 2. Mark NFT as claimed in your Supabase DB
+      await supabase
+        .from('user_streaks')
+        .update({ nft_claimed: true })
+        .eq('user_id', auth.user.id);
+  
+      // 3. Update local state to show 'ARTIFACT SECURED'
+      setStreak(prev => ({ ...prev, nftClaimed: true }));
       trackEvent('nft_claimed', { day: 6 });
-      openManifold('claim'); // Open Manifold after claim is recorded
+  
+      // 4. Open the Manifold page in a new tab
+      openManifold('claim');
     } catch (e) {
       console.error('Error claiming NFT:', e);
       alert('Failed to claim artifact. Please try again.');
@@ -321,7 +330,6 @@ const ResultPage: React.FC = () => {
       setClaiming(false);
     }
   };
-
   const handleStripeCheckout = useCallback(
     async (tier: 'prize-6' | 'prize-3') => {
       if (!auth.user?.id) {

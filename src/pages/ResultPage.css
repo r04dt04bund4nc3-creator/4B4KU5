@@ -250,3 +250,19 @@
 .sacred-confirmation-overlay {
   z-index: 20;
 }
+.hub-claim-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.manifold-claim-btn.hub-btn {
+  font-size: 1.5rem;
+  padding: 20px 40px;
+  background: linear-gradient(180deg, #ff00ff 0%, #800080 100%); /* Purple for sacred artifacts */
+  border: 2px solid #ffccff;
+  box-shadow: 0 0 40px rgba(255, 0, 255, 0.6);
+}
