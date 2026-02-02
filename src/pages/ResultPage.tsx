@@ -154,15 +154,26 @@ const ResultPage: React.FC = () => {
         data = newData;
       } else if (data) {
         // Streak found, update if needed
-        const lastVisit = new Date(data.last_visit);
-        const now = new Date();
-        const diffTime = Math.abs(now.getTime() - lastVisit.getTime());
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         let newDay = data.current_day;
 
         if (data.last_visit !== today) {
-          if (diffDays === 1) newDay = Math.min(data.current_day + 1, 6);
-          else if (diffDays > 1) newDay = 1; // Reset streak if more than 1 day passed
+          // ✅ CORRECT: Calculate calendar days between visits, not 24h periods
+          const lastVisitDate = new Date(data.last_visit);
+          const todayDate = new Date(today);
+          
+          // Number of full calendar days between last visit and today
+          const timeDiff = todayDate.getTime() - lastVisitDate.getTime();
+          const diffDays = Math.floor(timeDiff / (1000 * 3600 * 24));
+
+          if (diffDays === 1) {
+            // User returned on consecutive calendar day → advance streak, cap at day 6
+            newDay = Math.min(data.current_day + 1, 6);
+          } else if (diffDays > 1) {
+            // User missed more than one day → reset streak to day 1
+            newDay = 1;
+          }
+          // If diffDays == 0: user visited twice on the same calendar day → do NOT change streak
+
           await supabase
             .from('user_streaks')
             .update({
@@ -183,6 +194,13 @@ const ResultPage: React.FC = () => {
       });
     } catch (err) {
       console.error('Streak sync error:', err);
+      // 🚨 FIX: Fallback to safe state if data fails to load
+      setStreak({
+        day: 1,
+        lastDate: new Date().toISOString().split('T')[0],
+        nftClaimed: false,
+        subscriptionActive: false,
+      })
     } finally {
       setLoadingStreak(false);
     }
@@ -311,8 +329,24 @@ const ResultPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [view, canProceed, trackEvent]);
 
+  // 🚨 FIX: Reset streak state when user changes, then fetch new data
+  // This prevents showing data from a previous user when switching login IDs
   useEffect(() => {
-    if (auth.user?.id) fetchStreak(); // Fetch streak only if user is logged in
+    const defaultStreakState = {
+      day: 1,
+      lastDate: new Date().toISOString().split('T')[0],
+      nftClaimed: false,
+      subscriptionActive: false,
+    };
+
+    if (auth.user?.id) {
+      // Clear any leftover state from previous user immediately
+      setStreak(defaultStreakState);
+      fetchStreak();
+    } else {
+      // Reset state if user logs out
+      setStreak(defaultStreakState);
+    }
   }, [auth.user?.id, fetchStreak]);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
@@ -469,7 +503,7 @@ const ResultPage: React.FC = () => {
   const renderPrizeScreen = (tier: '6' | '3' | '0') => {
     const imgSrc = tier === '6' ? prize6 : tier === '3' ? prize3 : prize0;
     
-    // ✅ FIXED: Show claim button if user is eligible
+    // ✅ Show claim button if user is eligible
     // User is eligible if: (day === 6 OR is an active subscriber) AND has not claimed yet
     const showClaimBtn = tier === '0' && !streak.nftClaimed && (streak.day === 6 || streak.subscriptionActive);
     
@@ -557,7 +591,8 @@ const ResultPage: React.FC = () => {
 
   // HUB VIEW
   if (view === 'hub') {
-    // ✅ NEW: Show persistent claim button on hub page for eligible users
+    // As you requested: Show claim button for BOTH Day 6 users AND active subscribers
+    // who have not yet claimed their artifact
     const showHubClaimButton = !streak.nftClaimed && (streak.day === 6 || streak.subscriptionActive);
 
     return (
@@ -570,7 +605,7 @@ const ResultPage: React.FC = () => {
             {dayText}
           </div>
 
-          {/* ✅ NEW: Persistent Subscriber / Day 6 Claim Button */}
+          {/* ✅ Persistent Subscriber / Day 6 Claim Button */}
           {showHubClaimButton && (
             <div className="hub-claim-overlay">
               <button
