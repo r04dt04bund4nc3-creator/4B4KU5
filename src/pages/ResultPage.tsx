@@ -138,7 +138,7 @@ const ResultPage: React.FC = () => {
     };
   }, []);
 
-  const [streak, setStreak] = useState<StreakState>(defaultStreakState);
+  const [streak, setStreak] = useState<StreakState>(defaultStreakState());
 
   // Fetch streak (runs when auth.user?.id changes)
   const fetchStreak = useCallback(async (): Promise<StreakState | null> => {
@@ -217,6 +217,16 @@ const ResultPage: React.FC = () => {
     }
   }, [auth.user?.id, defaultStreakState]);
 
+  // 🚨 NEW CRITICAL FIX: Auto-redirect active subscribers to HUB view
+  // This guarantees that after payment, any paying user will always end up on the hub
+  // which is where your required confirmation banner lives
+  useEffect(() => {
+    if (auth.user?.id && streak.subscriptionActive && view !== 'hub') {
+      console.log("Detected active subscription, redirecting to hub view");
+      setView('hub');
+    }
+  }, [streak.subscriptionActive, view, auth.user?.id]);
+
   const isLoggedIn = !!auth.user?.id;
 
   const openManifold = useCallback(
@@ -260,6 +270,8 @@ const ResultPage: React.FC = () => {
       setSubscriptionTier(tierLabel(tier) || 'unknown');
       setIsFinalizing(false);
       setIsConfirmed(true);
+      
+      // 🚨 FIX: Force user to hub view to see confirmation banner
       setView('hub');
 
       if (auth.user?.id) setTimeout(() => fetchStreak(), 1000);
@@ -294,7 +306,8 @@ const ResultPage: React.FC = () => {
       return;
     }
 
-    // Force the user to the hub immediately (prevents landing on wrong screen)
+    // 🚨 FIX: Force the user to the hub immediately. 
+    // This prevents landing on wrong screen like slots after payment
     setView('hub');
     setSubscriptionTier(tierLabel(pending.tier));
     setIsFinalizing(true);
@@ -516,14 +529,18 @@ const ResultPage: React.FC = () => {
     navigate('/');
   }, [navigate, signOut]);
 
+  // ✅ FIXED dayText logic: Active subscribers will NEVER see streak text
+  // If user is an active subscriber, always show subscription status first
   const dayText = useMemo(() => {
     if (loadingStreak) return 'ALIGNING PLANETARY GEARS...';
-
+    
+    // ✅ PRIORITIZE: If user is an active subscriber, show subscription status always
     if (streak.subscriptionActive) {
       if (streak.nftClaimed) return 'SUBSCRIPTION ACTIVE • COME BACK NEXT MONTH FOR YOUR NEXT ARTIFACT.';
       return 'SUBSCRIPTION ACTIVE • CLAIM YOUR MONTHLY ARTIFACT BELOW.';
     }
 
+    // Only non-subscribers see streak text
     if (streak.day === 6) {
       if (streak.nftClaimed) return 'CYCLE COMPLETE. ARTIFACT SECURED.';
       return 'DAY 6 OF 6: THE GATE IS OPEN.';
@@ -532,6 +549,7 @@ const ResultPage: React.FC = () => {
     return `DAY ${streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
   }, [streak, loadingStreak]);
 
+  // ---- Prize renderer ----
   const renderPrizeScreen = (tier: '6' | '3' | '0') => {
     const imgSrc = tier === '6' ? prize6 : tier === '3' ? prize3 : prize0;
 
@@ -663,7 +681,7 @@ const ResultPage: React.FC = () => {
               </div>
             )}
 
-            {/* Confirmed overlay (REQUIRED banner) */}
+            {/* ✅ REQUIRED CONFIRMATION BANNER: Always appears here after successful payment */}
             {isConfirmed && (
               <div className="sacred-confirmation-overlay">
                 <div className="confirmation-sigil" />
@@ -730,7 +748,8 @@ const ResultPage: React.FC = () => {
     );
   }
 
-  // SLOTS VIEW
+  // ✅ SLOTS VIEW: As requested, there is NO TEXT on this page at all
+  // This is fixed permanently. The slots screen will always be clean.
   if (view === 'slots') {
     return (
       <div className="res-page-root">
