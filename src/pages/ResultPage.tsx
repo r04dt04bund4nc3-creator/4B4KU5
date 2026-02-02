@@ -1,4 +1,3 @@
-// src/pages/ResultPage.tsx
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../state/AppContext';
@@ -81,15 +80,15 @@ const ANNUAL_TIMEOUT_MS = 30000;
 const PRIZE_TEXTS = {
   6: {
     title: 'MONTHLY KEEPER',
-    headline: '\(6/month · 1 NFT per month',
-    body: 'Claim one NFT each month. Total claim value over 12 months: \)468, $2808 in two years, $16,848 in three years.',
+    headline: '$6/month · 1 NFT per month',
+    body: 'Claim one NFT each month. Total claim value over 12 months: $468, $2808 in two years, $16,848 in three years.',
     scarcity: 'Each new artifact is rarer than the last: 216 mints for NFT #1 → 1 mint of NFT #216.',
     cta: 'Get there first! TAP to lock in your position.',
   },
   3: {
     title: 'ANNUAL ARCHIVIST',
-    headline: '\(3/month · 1 NFT per month',
-    body: 'Access the full 216-artifact archive for one year. Claim one NFT each month. Total claim value over 12 months: \)468, $2808 in two years, \(16,848 in three years.',
+    headline: '$3/month · 1 NFT per month',
+    body: 'Access the full 216-artifact archive for one year. Claim one NFT each month. Total claim value over 12 months: $468, $2808 in two years, $16,848 in three years.',
     scarcity: 'Each new artifact is rarer than the last: 216 mints for NFT #1 → 1 mint of NFT #216.',
     cta: 'Get there first! TAP to lock in your position.',
   },
@@ -347,7 +346,8 @@ const ResultPage: React.FC = () => {
     const url = URL.createObjectURL(effectiveBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `4B4KU5-session-\){Date.now()}.webm`;
+    // Fixed: template literal typo
+    a.download = `4B4KU5-session-${Date.now()}.webm`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -404,14 +404,15 @@ const ResultPage: React.FC = () => {
       trackEvent('stripe_checkout_initiated', { tier });
 
       try {
-        const endpoint = `\({window.location.origin}/api/create-checkout`;
+        // Fixed: template literal typo
+        const endpoint = `${window.location.origin}/api/create-checkout`;
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tier,
             user_id: auth.user.id,
-            return_url: `\){window.location.origin}/result`,
+            return_url: `${window.location.origin}/result`,
           }),
         });
 
@@ -424,7 +425,7 @@ const ResultPage: React.FC = () => {
           throw new Error(text || `Server error: ${res.status}`);
         }
 
-        if (!res.ok) throw new Error(json?.error || `Request failed: \({res.status}`);
+        if (!res.ok) throw new Error(json?.error || `Request failed: ${res.status}`);
         if (!json?.url) throw new Error('No checkout URL returned');
 
         window.location.href = json.url; // Redirect to Stripe Checkout
@@ -460,7 +461,8 @@ const ResultPage: React.FC = () => {
       if (streak.nftClaimed) return 'CYCLE COMPLETE. ARTIFACT SECURED.';
       return 'DAY 6 OF 6: THE GATE IS OPEN.';
     }
-    return `DAY \){streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
+    // Fixed: template literal typo
+    return `DAY ${streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
   }, [streak, loadingStreak]);
 
   // ---- Prize renderer ----
@@ -478,7 +480,7 @@ const ResultPage: React.FC = () => {
       if (showClaimBtn) return; // Claim button has its own click handler
       if (tier === '6') return handleStripeCheckout('prize-6');
       if (tier === '3') return handleStripeCheckout('prize-3');
-      setView('hub'); // Fallback for \(0 to go to hub
+      setView('hub'); // Fallback for $0 to go to hub
     };
 
     return (
@@ -559,7 +561,7 @@ const ResultPage: React.FC = () => {
     const showHubClaimButton = !streak.nftClaimed && (streak.day === 6 || streak.subscriptionActive);
 
     return (
-      <div className={`res-page-root \){isConfirmed ? 'confirmed-state' : ''}`}>
+      <div className={`res-page-root ${isConfirmed ? 'confirmed-state' : ''}`}>
         <div className="res-machine-container">
           <img src={steamSlotsHub} className="res-background-image" alt="Steam Slots Hub" />
           
@@ -605,20 +607,22 @@ const ResultPage: React.FC = () => {
 
             {!isConfirmed && (
               <>
+                {/* ✅ UPDATED: All hub portal buttons now point DIRECTLY to individual NFTs
+                  Users will never reach your public profile page from here */}
                 <button
                   className="hs hs-hub-left"
-                  onClick={() => openManifold('hub-left')}
-                  aria-label="Open artifact portal left"
+                  onClick={() => window.open('https://manifold.xyz/@r41nb0w/id/4078311664', '_blank', 'noopener,noreferrer')}
+                  aria-label="001 - GR33N - 4W4K3N1NG"
                 />
                 <button
                   className="hs hs-hub-center"
-                  onClick={() => openManifold('hub-center')}
-                  aria-label="Open artifact portal center"
+                  onClick={() => window.open('https://manifold.xyz/@r41nb0w/id/4078321904', '_blank', 'noopener,noreferrer')}
+                  aria-label="002 - R3D - ជីពចរ"
                 />
                 <button
                   className="hs hs-hub-right"
-                  onClick={() => openManifold('hub-right')}
-                  aria-label="Open artifact portal right"
+                  onClick={() => window.open('https://manifold.xyz/@r41nb0w/id/4078434544', '_blank', 'noopener,noreferrer')}
+                  aria-label="003 - 0R4NG3 - N3W L1F3"
                 />
               </>
             )}
@@ -639,17 +643,17 @@ const ResultPage: React.FC = () => {
             <button
               className="hs hs-slot-left"
               onClick={() => setView('prize-0')}
-              aria-label="\(0 Reward"
+              aria-label="$0 Reward"
             />
             <button
               className="hs hs-slot-center"
               onClick={() => setView('prize-6')}
-              aria-label="\)6 Subscription"
+              aria-label="$6 Subscription"
             />
             <button
               className="hs hs-slot-right"
               onClick={() => setView('prize-3')}
-              aria-label="\(3 Subscription"
+              aria-label="$3 Subscription"
             />
           </div>
         </div>

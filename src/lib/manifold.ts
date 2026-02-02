@@ -6,24 +6,24 @@ export const MANIFOLD_NFT_URL = 'https://manifold.xyz/@r41nb0w/id/4078311664';
 
 // ---------------------------------------------------------
 // 1. NFT SCHEDULE (FREE CLAIM PAGES)
-// These URLs point to the gated free pages for subscribers.
+// These URLs point to the individual NFTs for subscribers.
 // We append the claim code automatically.
 // ---------------------------------------------------------
 const NFT_SCHEDULE = [
-  'https://manifold.xyz/@r41nb0w/id/4080670960', // NFT #1 (Free Subscriber Page)
-  'https://manifold.xyz/@r41nb0w/id/REPLACE_WITH_MONTH_2_ID', // NFT #2
-  'https://manifold.xyz/@r41nb0w/id/REPLACE_WITH_MONTH_3_ID', // NFT #3
+  'https://manifold.xyz/@r41nb0w/id/4080670960', // NFT #1 (Free Subscriber Page for 001 - GR33N - 4W4K3N1NG)
+  'https://manifold.xyz/@r41nb0w/id/REPLACETHIS', // 002 - R3D - ជីពចរ
+  'https://manifold.xyz/@r41nb0w/id/REPLACETHIS', // 003 - 0R4NG3 - N3W L1F3
 ];
 
 // The codes you set in Manifold for each month
 const CLAIM_CODES = [
   '4B4KU5SUB001', // Month 1
-  '4B4KU5SUB002', // Month 2
-  '4B4KU5SUB003', // Month 3
+  'REPLACETHIS', // Month 2
+  'REPLACETHIS', // Month 3
 ];
 
 // Fallback if they run out of scheduled NFTs
-const MANIFOLD_PROFILE_URL = 'https://manifold.xyz/@r41nb0w';
+const MANIFOLD_FALLBACK_URL = 'https://manifold.xyz/@r41nb0w/id/4078311664'; // Redirect to first NFT
 
 /**
  * Appends the claim code to the Manifold URL so the user doesn't have to type it.
@@ -32,8 +32,7 @@ function buildAuthenticatedUrl(baseUrl: string, index: number) {
   const code = CLAIM_CODES[index];
   if (!code) return baseUrl;
   
-  // Manifold typically uses ?claimcode= or ?code= 
-  // Based on their "Claim Code" workflow, it is usually ?code=
+  // Manifold uses ?code= for claim codes
   const separator = baseUrl.includes('?') ? '&' : '?';
   return `${baseUrl}${separator}code=${code}`;
 }
@@ -74,14 +73,6 @@ export async function claimRitualArtifact(userId: string) {
 
     if (isTooSoon && claimCount > 0) {
       targetIndex = claimCount - 1;
-      const rawUrl = NFT_SCHEDULE[targetIndex] || MANIFOLD_PROFILE_URL;
-      const authUrl = buildAuthenticatedUrl(rawUrl, targetIndex);
-      
-      return {
-        success: true,
-        claimUrl: authUrl,
-        message: "Retrieving your current monthly artifact..."
-      };
     }
 
     // 4. CHECK IF WE HAVE A REWARD FOR THIS LEVEL
@@ -90,7 +81,7 @@ export async function claimRitualArtifact(userId: string) {
     if (!nextNftUrl) {
       return { 
         success: true, 
-        claimUrl: MANIFOLD_PROFILE_URL, 
+        claimUrl: MANIFOLD_FALLBACK_URL, 
         message: "You have collected all currently available artifacts!" 
       };
     }
@@ -115,6 +106,6 @@ export async function claimRitualArtifact(userId: string) {
 
   } catch (err) {
     console.error('Logic Error:', err);
-    return { success: true, claimUrl: MANIFOLD_PROFILE_URL };
+    return { success: true, claimUrl: MANIFOLD_FALLBACK_URL };
   }
 }
