@@ -419,12 +419,9 @@ const ResultPage: React.FC = () => {
   }, [auth.user?.id, fetchStreak, defaultStreakState]);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
+  const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // BLACK-SCREEN FIX #3: Safe optional chaining on ritual (prevents crash on load)
-  // ──────────────────────────────────────────────────────────────────────────
-  const currentPrint = ritual?.soundPrintDataUrl || recoveredPrint;
-
+  // BLACK-SCREEN FIX #3: Save recovery state before login, no invalid arguments
   const handleSocialLogin = useCallback(
     async (provider: 'discord' | 'google') => {
       trackEvent('social_login_attempt', { provider });
@@ -436,16 +433,15 @@ const ResultPage: React.FC = () => {
           console.warn(e);
         }
       }
-      
-      // Safe access
-      if (ritual?.soundPrintDataUrl) {
+      if (ritual.soundPrintDataUrl) {
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
       }
 
+      // Calls your existing login functions exactly as your original code did
       if (provider === 'discord') await signInWithDiscord();
       else await signInWithGoogle();
     },
-    [state.recordingBlob, ritual, trackEvent, signInWithDiscord, signInWithGoogle]
+    [state.recordingBlob, ritual.soundPrintDataUrl, trackEvent, signInWithDiscord, signInWithGoogle]
   );
 
   const downloadAndSpin = useCallback(() => {
