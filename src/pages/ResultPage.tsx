@@ -141,7 +141,6 @@ const ResultPage: React.FC = () => {
   const [streak, setStreak] = useState<StreakState>(defaultStreakState());
 
   // 🚨 GLOBAL FIX: Ensures view is always 'hub' if a payment flow is active or user is subscribed
-  // This high-priority effect will reliably force the view to 'hub' to prevent UI inconsistencies.
   useEffect(() => {
     if (auth.user?.id && (streak.subscriptionActive || isConfirmed || isFinalizing) && view !== 'hub') {
       console.log(`✅ Global View Enforcer: Forcing view to 'hub'. Current view: ${view}`);
@@ -149,15 +148,14 @@ const ResultPage: React.FC = () => {
     }
   }, [auth.user?.id, streak.subscriptionActive, isConfirmed, isFinalizing, view]);
 
-
   // Fetch streak (runs when auth.user?.id changes)
   const fetchStreak = useCallback(async (forceRefresh = false): Promise<StreakState | null> => {
     if (!auth.user?.id) return null;
-    
+
     if (!forceRefresh) {
       setLoadingStreak(true);
     }
-    
+
     const today = new Date().toISOString().split('T')[0];
 
     try {
@@ -272,7 +270,7 @@ const ResultPage: React.FC = () => {
 
       setSubscriptionTier(tierLabel(tier) || 'unknown');
       setIsFinalizing(false);
-      
+
       // Immediately assume subscription is active for UI purposes
       setStreak(prev => ({ ...prev, subscriptionActive: true }));
 
@@ -355,16 +353,30 @@ const ResultPage: React.FC = () => {
     };
   }, [auth.user?.id, fetchStreak]);
 
-  // Recover blobs
+  // Recover blobs - FIXED: Added error handling and cleanup
   useEffect(() => {
     const run = async () => {
-      const savedPrint = sessionStorage.getItem(RECOVERY_PRINT_KEY);
-      if (savedPrint) setRecoveredPrint(savedPrint);
-      const blob = await loadBlob(RECOVERY_BLOB_KEY);
-      if (blob) setRecoveredBlob(blob);
+      try {
+        const savedPrint = sessionStorage.getItem(RECOVERY_PRINT_KEY);
+        if (savedPrint) setRecoveredPrint(savedPrint);
+        const blob = await loadBlob(RECOVERY_BLOB_KEY);
+        if (blob) setRecoveredBlob(blob);
+      } catch (err) {
+        console.error('Recovery failed:', err);
+        sessionStorage.removeItem(RECOVERY_PRINT_KEY);
+      }
     };
     run();
   }, []);
+
+  // Clear recovery data once logged in - NEW: Prevents stale data
+  useEffect(() => {
+    if (auth.user?.id) {
+      sessionStorage.removeItem(RECOVERY_PRINT_KEY);
+      setRecoveredPrint(null);
+      setRecoveredBlob(null);
+    }
+  }, [auth.user?.id]);
 
   // Reveal timer
   useEffect(() => {
@@ -407,8 +419,9 @@ const ResultPage: React.FC = () => {
     }
   }, [auth.user?.id, fetchStreak, defaultStreakState]);
 
+  // FIXED: Safe access to ritual with fallback
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
-  const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
+  const currentPrint = ritual?.soundPrintDataUrl || recoveredPrint; // Added optional chaining
 
   const handleSocialLogin = useCallback(
     async (provider: 'discord' | 'google') => {
@@ -421,14 +434,14 @@ const ResultPage: React.FC = () => {
           console.warn(e);
         }
       }
-      if (ritual.soundPrintDataUrl) {
+      if (ritual?.soundPrintDataUrl) { // Added optional chaining
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
       }
 
       if (provider === 'discord') await signInWithDiscord();
       else await signInWithGoogle();
     },
-    [state.recordingBlob, ritual.soundPrintDataUrl, trackEvent, signInWithDiscord, signInWithGoogle]
+    [state.recordingBlob, ritual?.soundPrintDataUrl, trackEvent, signInWithDiscord, signInWithGoogle]
   );
 
   const downloadAndSpin = useCallback(() => {
@@ -461,9 +474,9 @@ const ResultPage: React.FC = () => {
         .eq('user_id', auth.user.id);
 
       // Once user claims NFT, hide the confirmation banner
-      setStreak(prev => ({ 
-        ...prev, 
-        nftClaimed: true 
+      setStreak(prev => ({
+        ...prev,
+        nftClaimed: true
       }));
       setIsConfirmed(false); // Hide the confirmation state
 
@@ -545,12 +558,9 @@ const ResultPage: React.FC = () => {
   }, [navigate, signOut]);
 
   // ✅ FINAL FIXED TEXT LOGIC:
-  // Enforces your requirement PERFECTLY:
-  // 1. If user is ANY paying subscriber: ALWAYS show subscription text, NEVER show day text
-  // 2. "DAY X OF 6" text is ONLY allowed to appear on prize-0 screen. Nowhere else.
   const dayText = useMemo(() => {
     if (loadingStreak) return 'ALIGNING PLANETARY GEARS...';
-    
+
     // #1 PRIORITY: Any active subscriber will ONLY see subscription text. Ever.
     if (streak.subscriptionActive) {
       if (streak.nftClaimed) return 'SUBSCRIPTION ACTIVE • COME BACK NEXT MONTH FOR YOUR NEXT ARTIFACT.';
@@ -558,7 +568,6 @@ const ResultPage: React.FC = () => {
     }
 
     // #2 RULE: Consecutive day text CANNOT appear on slots or hub screens
-    // This text is ONLY allowed on prize-0 screen, per your request
     if (view !== 'prize-0') {
       return "";
     }
@@ -597,11 +606,11 @@ const ResultPage: React.FC = () => {
       >
         <div className="res-machine-container">
           <img src={imgSrc} className="res-background-image" alt="Prize" />
-          
+
           {tier === '0' && dayText && (
             <div className="prize-shelf-text legacy">{dayText}</div>
           )}
-          
+
           {textData && (
             <div className="prize-shelf-text sacred-text-container">
               <h2 className="sacred-title">{textData.title}</h2>
@@ -717,7 +726,7 @@ const ResultPage: React.FC = () => {
 
             {/* 🚨 FIX: The old sacred-confirmation-overlay is now GONE. */}
             {/* It is replaced by the 'hub-claim-overlay' controlled by showHubClaimButton. */}
-            
+
             {!showHubClaimButton && !isFinalizing && ( // Only render portals if no big button or finalizing message is showing
               <>
                 <button
@@ -764,8 +773,6 @@ const ResultPage: React.FC = () => {
   }
 
   // ✅ SLOTS VIEW: 100% COMPLIANT WITH YOUR REQUEST
-  // There is NO TEXT on this page whatsoever. Ever.
-  // Background image + clickable buttons only. Perfect.
   if (view === 'slots') {
     return (
       <div className="res-page-root">
@@ -786,7 +793,7 @@ const ResultPage: React.FC = () => {
   if (view === 'prize-3') return renderPrizeScreen('3');
   if (view === 'prize-6') return renderPrizeScreen('6');
 
-  // SUMMARY (LOGIN) VIEW
+  // SUMMARY (LOGIN) VIEW - FIXED: Added safe access to ritual
   return (
     <div className="res-page-root">
       <div className="res-machine-container">
