@@ -419,9 +419,11 @@ const ResultPage: React.FC = () => {
   }, [auth.user?.id, fetchStreak, defaultStreakState]);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
-  const currentPrint = ritual.soundPrintDataUrl || recoveredPrint;
+  const currentPrint = ritual?.soundPrintDataUrl || recoveredPrint;
 
-  // BLACK-SCREEN FIX #3: Save recovery state before login, no invalid arguments
+  // ──────────────────────────────────────────────────────────────────────────
+  // BLACK-SCREEN FIX #3: Safe optional chaining on ritual (prevents crash on load)
+  // ──────────────────────────────────────────────────────────────────────────
   const handleSocialLogin = useCallback(
     async (provider: 'discord' | 'google') => {
       trackEvent('social_login_attempt', { provider });
@@ -433,15 +435,15 @@ const ResultPage: React.FC = () => {
           console.warn(e);
         }
       }
-      if (ritual.soundPrintDataUrl) {
+      
+      if (ritual?.soundPrintDataUrl) {
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
       }
 
-      // Calls your existing login functions exactly as your original code did
       if (provider === 'discord') await signInWithDiscord();
       else await signInWithGoogle();
     },
-    [state.recordingBlob, ritual.soundPrintDataUrl, trackEvent, signInWithDiscord, signInWithGoogle]
+    [state.recordingBlob, ritual, trackEvent, signInWithDiscord, signInWithGoogle]
   );
 
   const downloadAndSpin = useCallback(() => {
@@ -554,6 +556,16 @@ const ResultPage: React.FC = () => {
     await signOut();
     navigate('/');
   }, [navigate, signOut]);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // ✅ NEW FIX: Set isConfirmed = true for Day 6+ non-subscribers on login
+  // ──────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (auth.user?.id && !streak.subscriptionActive && !streak.nftClaimed && streak.day >= 6) {
+      setIsConfirmed(true);
+    }
+  }, [auth.user?.id, streak.day, streak.subscriptionActive, streak.nftClaimed]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const dayText = useMemo(() => {
     if (loadingStreak) return 'ALIGNING PLANETARY GEARS...';
