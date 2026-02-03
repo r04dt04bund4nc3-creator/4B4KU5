@@ -130,7 +130,7 @@ const ResultPage: React.FC = () => {
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null);
 
   // ──────────────────────────────────────────────────────────────
-  // BLACK-SCREEN FIX #1: Auth stuck guard (prevents infinite spinner)
+  // BLACK-SCREEN FIX: Auth stuck guard (prevents infinite spinner)
   // ──────────────────────────────────────────────────────────────
   const [authStuckGuard, setAuthStuckGuard] = useState(false);
 
@@ -154,28 +154,23 @@ const ResultPage: React.FC = () => {
   const [streak, setStreak] = useState<StreakState>(defaultStreakState());
 
   // 🚨 FIXED GLOBAL VIEW ENFORCER:
-  // Now forces view to 'hub' for:
+  // Now only forces view to 'hub' for:
   // 1. Subscribed users
   // 2. Payment confirmed/finalizing users
-  // 3. ✅ NEW: Day 6 users who haven't claimed their NFT yet
+  // ✅ ALLOWS Day 6 users to stay on prize-0 screen as you intended
   useEffect(() => {
     if (auth.user?.id) {
       const shouldBeOnHub = 
         streak.subscriptionActive || 
         isConfirmed || 
-        isFinalizing ||
-        (streak.day >= 6 && !streak.nftClaimed);
+        isFinalizing;
 
       if (shouldBeOnHub && view !== 'hub') {
-        console.log(`✅ Global View Enforcer: Forcing view to 'hub'. 
-          Current view: ${view}, 
-          Day: ${streak.day}, 
-          NFT Claimed: ${streak.nftClaimed},
-          Subscribed: ${streak.subscriptionActive}`);
+        console.log(`✅ Global View Enforcer: Forcing view to 'hub'. Current view: ${view}`);
         setView('hub');
       }
     }
-  }, [auth.user?.id, streak.subscriptionActive, isConfirmed, isFinalizing, streak.day, streak.nftClaimed, view]);
+  }, [auth.user?.id, streak.subscriptionActive, isConfirmed, isFinalizing, view]);
 
   // Fetch streak (runs when auth.user?.id changes)
   const fetchStreak = useCallback(async (forceRefresh = false): Promise<StreakState | null> => {
@@ -281,7 +276,7 @@ const ResultPage: React.FC = () => {
     const canceled = params.get('canceled') === 'true';
     const tier = params.get('tier');
 
-    // BLACK-SCREEN FIX #2: Protect Supabase OAuth hash from being wiped
+    // BLACK-SCREEN FIX: Protect Supabase OAuth hash from being wiped
     const isAuthRedirect = window.location.hash.includes('access_token=');
 
     if (canceled) {
@@ -433,13 +428,6 @@ const ResultPage: React.FC = () => {
       setIsFinalizing(false);
     }
   }, [auth.user?.id, fetchStreak, defaultStreakState]);
-
-  // ✅ FIX: For Day 6 users who haven't claimed their NFT yet, show the claim button
-  useEffect(() => {
-    if (auth.user?.id && !streak.subscriptionActive && !streak.nftClaimed && streak.day >= 6) {
-      setIsConfirmed(true);
-    }
-  }, [auth.user?.id, streak.day, streak.subscriptionActive, streak.nftClaimed]);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
   const currentPrint = ritual?.soundPrintDataUrl || recoveredPrint;
@@ -680,7 +668,7 @@ const ResultPage: React.FC = () => {
     );
   };
 
-  // AUTH LOADING — now protected against black screen
+  // AUTH LOADING
   if (auth.isLoading && !authStuckGuard) {
     return (
       <div className="res-page-root">
@@ -691,10 +679,6 @@ const ResultPage: React.FC = () => {
 
   // HUB VIEW
   if (view === 'hub') {
-    // This will now be true for:
-    // - Subscribers who haven't claimed
-    // - Day 6 users who haven't claimed
-    // - Users who just completed payment
     const showHubClaimButton = !streak.nftClaimed && (streak.day === 6 || streak.subscriptionActive || isConfirmed);
 
     return (
