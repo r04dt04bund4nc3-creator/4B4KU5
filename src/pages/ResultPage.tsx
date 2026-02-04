@@ -140,7 +140,6 @@ const ResultPage: React.FC = () => {
     }, 4000);
     return () => clearTimeout(timer);
   }, [auth.isLoading]);
-  // ──────────────────────────────────────────────────────────────
 
   const defaultStreakState = useCallback((): StreakState => {
     return {
@@ -153,11 +152,7 @@ const ResultPage: React.FC = () => {
 
   const [streak, setStreak] = useState<StreakState>(defaultStreakState());
 
-  // 🚨 FIXED GLOBAL VIEW ENFORCER:
-  // Now only forces view to 'hub' for:
-  // 1. Subscribed users
-  // 2. Payment confirmed/finalizing users
-  // ✅ ALLOWS Day 6 users to stay on prize-0 screen as you intended
+  // GLOBAL VIEW ENFORCER
   useEffect(() => {
     if (auth.user?.id) {
       const shouldBeOnHub = 
@@ -172,7 +167,7 @@ const ResultPage: React.FC = () => {
     }
   }, [auth.user?.id, streak.subscriptionActive, isConfirmed, isFinalizing, view]);
 
-  // Fetch streak (runs when auth.user?.id changes)
+  // Fetch streak
   const fetchStreak = useCallback(async (forceRefresh = false): Promise<StreakState | null> => {
     if (!auth.user?.id) return null;
     
@@ -269,14 +264,13 @@ const ResultPage: React.FC = () => {
     [trackEvent]
   );
 
-  // Handle Stripe return via URL params (best-case path)
+  // Stripe return logic with Hash protection
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const success = params.get('success') === 'true';
     const canceled = params.get('canceled') === 'true';
     const tier = params.get('tier');
 
-    // BLACK-SCREEN FIX: Protect Supabase OAuth hash from being wiped
     const isAuthRedirect = window.location.hash.includes('access_token=');
 
     if (canceled) {
@@ -313,7 +307,7 @@ const ResultPage: React.FC = () => {
     }
   }, [location.search, auth.user?.id, fetchStreak, streak.nftClaimed]);
 
-  // Robust Stripe-return path (works even when Stripe returns to /result with NO params)
+  // Robust Stripe Polling
   useEffect(() => {
     if (!auth.user?.id) return;
 
@@ -388,7 +382,7 @@ const ResultPage: React.FC = () => {
     run();
   }, []);
 
-  // Reveal timer
+  // Timers
   useEffect(() => {
     if (view.startsWith('prize-')) {
       setCanProceed(false);
@@ -397,7 +391,6 @@ const ResultPage: React.FC = () => {
     }
   }, [view]);
 
-  // Monthly auto-resolve to hub
   useEffect(() => {
     if (view !== 'prize-6' || !canProceed) return;
     const t = setTimeout(() => {
@@ -407,7 +400,6 @@ const ResultPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [view, canProceed, trackEvent]);
 
-  // Annual auto-resolve to hub
   useEffect(() => {
     if (view !== 'prize-3' || !canProceed) return;
     const t = setTimeout(() => {
@@ -417,7 +409,7 @@ const ResultPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [view, canProceed, trackEvent]);
 
-  // Reset streak on user change + fetch
+  // User State Reset
   useEffect(() => {
     if (auth.user?.id) {
       setStreak(defaultStreakState());
@@ -429,15 +421,17 @@ const ResultPage: React.FC = () => {
     }
   }, [auth.user?.id, fetchStreak, defaultStreakState]);
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // ✅ NEW FIX: Set isConfirmed = true for existing subscribers who haven't claimed their NFT
-  // ──────────────────────────────────────────────────────────────────────────
+  // Unified Banner Fix (Subscribers AND Day 6 Users)
   useEffect(() => {
-    if (auth.user?.id && streak.subscriptionActive && !streak.nftClaimed) {
-      setIsConfirmed(true);
+    if (auth.user?.id && !streak.nftClaimed) {
+      const isSubscriberNeedingClaim = streak.subscriptionActive;
+      const isDay6UserNeedingClaim = !streak.subscriptionActive && streak.day >= 6;
+
+      if (isSubscriberNeedingClaim || isDay6UserNeedingClaim) {
+        setIsConfirmed(true);
+      }
     }
-  }, [auth.user?.id, streak.subscriptionActive, streak.nftClaimed]);
-  // ──────────────────────────────────────────────────────────────────────────
+  }, [auth.user?.id, streak.subscriptionActive, streak.nftClaimed, streak.day]);
 
   const effectiveBlob = state.recordingBlob ?? recoveredBlob ?? null;
   const currentPrint = ritual?.soundPrintDataUrl || recoveredPrint;
@@ -488,22 +482,32 @@ const ResultPage: React.FC = () => {
     try {
       const result = await claimRitualArtifact(auth.user.id);
 
-      await supabase
-        .from('user_streaks')
-        .update({ nft_claimed: true })
-        .eq('user_id', auth.user.id);
+      // ✅ ONLY update the database if the claim was actually successful (strong guarantee)
+      if (result?.success) {
+        const { error } = await supabase
+          .from('user_streaks')
+          .update({ nft_claimed: true })
+          .eq('user_id', auth.user.id);
 
-      setStreak(prev => ({ 
-        ...prev, 
-        nftClaimed: true 
-      }));
-      setIsConfirmed(false);
+        if (error) throw error;
 
-      trackEvent('nft_claimed', { day: streak.day, isSubscriber: streak.subscriptionActive });
+        setStreak(prev => ({ 
+          ...prev, 
+          nftClaimed: true 
+        }));
+        setIsConfirmed(false);
 
-      if (result.success) {
-        window.open(result.claimUrl, '_blank', 'noopener,noreferrer');
+        trackEvent('nft_claimed', { day: streak.day, isSubscriber: streak.subscriptionActive });
+
+        if (result.claimUrl) {
+          window.open(result.claimUrl, '_blank', 'noopener,noreferrer');
+        } else {
+          openManifold('claim_fallback');
+        }
       } else {
+        // If result.success is false, we DON'T update the DB. 
+        // This keeps the button visible so the user can try again.
+        console.warn('Claim result not successful, keeping button visible.');
         openManifold('claim_fallback');
       }
     } catch (e) {
@@ -599,7 +603,7 @@ const ResultPage: React.FC = () => {
     const imgSrc = tier === '6' ? prize6 : tier === '3' ? prize3 : prize0;
 
     const showClaimBtn =
-      tier === '0' && !streak.nftClaimed && (streak.day === 6 || streak.subscriptionActive);
+      tier === '0' && !streak.nftClaimed && (streak.day >= 6 || streak.subscriptionActive);
 
     const textData = tier === '6' ? PRIZE_TEXTS[6] : tier === '3' ? PRIZE_TEXTS[3] : null;
 
@@ -689,7 +693,7 @@ const ResultPage: React.FC = () => {
 
   // HUB VIEW
   if (view === 'hub') {
-    const showHubClaimButton = !streak.nftClaimed && (streak.day === 6 || streak.subscriptionActive || isConfirmed);
+    const showHubClaimButton = !streak.nftClaimed && (streak.day >= 6 || streak.subscriptionActive || isConfirmed);
 
     return (
       <div className={`res-page-root ${isConfirmed ? 'confirmed-state' : ''}`}>
@@ -742,7 +746,7 @@ const ResultPage: React.FC = () => {
                       'noopener,noreferrer'
                     )
                   }
-                  aria-label="001 - GR33N - 4W4K3N1NG"
+                  aria-label="001"
                 />
                 <button
                   className="hs hs-hub-center"
@@ -753,7 +757,7 @@ const ResultPage: React.FC = () => {
                       'noopener,noreferrer'
                     )
                   }
-                  aria-label="002 - R3D - ជីពចរ"
+                  aria-label="002"
                 />
                 <button
                   className="hs hs-hub-right"
@@ -764,7 +768,7 @@ const ResultPage: React.FC = () => {
                       'noopener,noreferrer'
                     )
                   }
-                  aria-label="003 - 0R4NG3 - N3W L1F3"
+                  aria-label="003"
                 />
               </>
             )}
