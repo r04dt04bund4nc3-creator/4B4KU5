@@ -96,10 +96,17 @@ const dataURLToBlob = (dataUrl: string) => {
     for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
     return new Blob([bytes], { type: mime });
   } catch (e) {
-    console.error("Failed to convert dataURL to blob", e);
+    console.error('Failed to convert dataURL to blob', e);
     return null;
   }
 };
+
+// Keys used across the app
+const POST_AUTH_REDIRECT_KEY = 'post-auth-redirect';
+
+// ✅ NEW: only allow state recovery if a user is *actually* in a recovery flow
+// (OAuth redirect, just saved a recording/print, etc). Prevents cross-user bleed.
+const ALLOW_RECOVERY_KEY = 'g4m3_allow_recovery_v1';
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [audio, setAudio] = useState<AudioState>(initialAudioState);
@@ -108,19 +115,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const restorePostAuthState = useCallback(() => {
     try {
+      // ✅ Only restore if we explicitly allowed recovery
+      const allow = sessionStorage.getItem(ALLOW_RECOVERY_KEY) === '1';
+      if (!allow) return;
+
       const sp = sessionStorage.getItem('g4m3_sound_print');
       if (sp) {
         setRitual(prev => ({ ...prev, soundPrintDataUrl: sp, phase: 'complete' }));
       }
+
       const rec = sessionStorage.getItem('g4m3_recording_data_url');
       if (rec) {
         const blob = dataURLToBlob(rec);
         if (blob) setAudio(prev => ({ ...prev, recordingBlob: blob }));
       }
+
       const fileName = sessionStorage.getItem('g4m3_filename');
       if (fileName) {
+        // NOTE: this is just to restore a label; actual file bytes aren't restored here.
         setAudio(prev => ({ ...prev, file: new File([], fileName) }));
       }
+
       const eq = sessionStorage.getItem('g4m3_final_eq');
       if (eq) {
         setRitual(prev => ({ ...prev, finalEQState: JSON.parse(eq) }));
@@ -148,25 +163,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const persistBeforeOAuth = useCallback(async () => {
     try {
+      // ✅ mark that a recovery is allowed on this tab/session
+      sessionStorage.setItem(ALLOW_RECOVERY_KEY, '1');
+
       if (audio.recordingBlob) {
         const dataUrl = await blobToDataURL(audio.recordingBlob);
-        if (dataUrl.length < 4000000) { 
+        if (dataUrl.length < 4000000) {
           sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
         } else {
-          console.warn("Recording too large for sessionStorage. Consider IndexedDB.");
+          console.warn('Recording too large for sessionStorage. Consider IndexedDB.');
         }
       }
+
       if (ritual.soundPrintDataUrl) {
         sessionStorage.setItem('g4m3_sound_print', ritual.soundPrintDataUrl);
       }
+
       if (audio.file?.name) {
         sessionStorage.setItem('g4m3_filename', audio.file.name);
       }
+
       if (ritual.finalEQState?.length) {
         sessionStorage.setItem('g4m3_final_eq', JSON.stringify(ritual.finalEQState));
       }
-      // ✅ KEY FIX: Tell callback where to go after auth
-      sessionStorage.setItem('post-auth-redirect', '/result');
+
+      sessionStorage.setItem(POST_AUTH_REDIRECT_KEY, '/result');
     } catch (e) {
       console.warn('Persist before OAuth failed:', e);
     }
@@ -177,9 +198,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await persistBeforeOAuth();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
-      options: { 
+      options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        // ✅ CRITICAL: Skip browser popup blockers
         skipBrowserRedirect: false,
       },
     });
@@ -191,7 +211,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await persistBeforeOAuth();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { 
+      options: {
         redirectTo: `${window.location.origin}/auth/callback`,
         skipBrowserRedirect: false,
       },
@@ -204,7 +224,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await persistBeforeOAuth();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'twitter',
-      options: { 
+      options: {
         redirectTo: `${window.location.origin}/auth/callback`,
         skipBrowserRedirect: false,
       },
@@ -214,21 +234,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     setAuth(prev => ({ ...prev, error: null }));
+    // ✅ mark recovery allowed (email login can happen after ritual too)
+    sessionStorage.setItem(ALLOW_RECOVERY_KEY, '1');
+
     const result = await supabase.auth.signInWithPassword({ email, password });
     if (result.error) setAuth(prev => ({ ...prev, error: result.error.message }));
     return result;
+  }, []);
+
+  const reset = useCallback(() => {
+    setAudio(initialAudioState);
+    setRitual(initialRitualState);
+
+    try {
+      sessionStorage.removeItem('g4m3_sound_print');
+      sessionStorage.removeItem('g4m3_recording_data_url');
+      sessionStorage.removeItem('g4m3_filename');
+      sessionStorage.removeItem('g4m3_final_eq');
+      sessionStorage.removeItem(POST_AUTH_REDIRECT_KEY);
+
+      // ✅ crucial: do not allow future restores unless explicitly set again
+      sessionStorage.removeItem(ALLOW_RECOVERY_KEY);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) console.error('Sign out error:', error);
     reset();
-  }, []);
+  }, [reset]);
 
   const saveRecording = useCallback(async (blob: Blob, finalEQ: number[]) => {
     setAudio(prev => ({ ...prev, recordingBlob: blob }));
     setRitual(prev => ({ ...prev, finalEQState: finalEQ, phase: 'capture', isRecording: false }));
+
     try {
+      // ✅ mark recovery allowed because we now have something worth recovering
+      sessionStorage.setItem(ALLOW_RECOVERY_KEY, '1');
+
       const dataUrl = await blobToDataURL(blob);
       if (dataUrl.length < 4000000) {
         sessionStorage.setItem('g4m3_recording_data_url', dataUrl);
@@ -242,6 +287,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const captureSoundPrint = useCallback((dataUrl: string) => {
     setRitual(prev => ({ ...prev, soundPrintDataUrl: dataUrl, phase: 'complete' }));
     try {
+      // ✅ mark recovery allowed because we now have something worth recovering
+      sessionStorage.setItem(ALLOW_RECOVERY_KEY, '1');
+
       sessionStorage.setItem('g4m3_sound_print', dataUrl);
     } catch (e) {
       console.warn('Persist sound print failed:', e);
@@ -250,8 +298,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const savePerformance = useCallback(async (gestureData: any, trackName: string, trackHash: string) => {
     if (!auth.user) {
-        console.error("Cannot save performance: No authenticated user.");
-        return;
+      console.error('Cannot save performance: No authenticated user.');
+      return;
     }
 
     const { error } = await supabase.from('performances').insert({
@@ -265,26 +313,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) console.error('Error saving performance:', error);
   }, [auth.user, ritual.soundPrintDataUrl]);
 
-  const setSoundPrint = useCallback((data: any) => { if (data?.dataUrl) captureSoundPrint(data.dataUrl); }, [captureSoundPrint]);
-  const setFile = useCallback((file: File) => { setAudio(prev => ({ ...prev, file, isProcessing: true })); }, []);
+  const setSoundPrint = useCallback((data: any) => {
+    if (data?.dataUrl) captureSoundPrint(data.dataUrl);
+  }, [captureSoundPrint]);
+
+  const setFile = useCallback((file: File) => {
+    setAudio(prev => ({ ...prev, file, isProcessing: true }));
+  }, []);
+
   const setAudioBuffer = useCallback((buffer: AudioBuffer) => {
     setAudio(prev => ({ ...prev, audioBuffer: buffer, isProcessing: false, duration: buffer.duration }));
   }, []);
-  const setPlaying = useCallback((playing: boolean) => { setAudio(prev => ({ ...prev, isPlaying: playing })); }, []);
-  const updateCurrentTime = useCallback((time: number) => { setAudio(prev => ({ ...prev, currentTime: time })); }, []);
-  const setRitualPhase = useCallback((phase: RitualState['phase']) => { setRitual(prev => ({ ...prev, phase })); }, []);
-  const setCountdown = useCallback((count: number) => { setRitual(prev => ({ ...prev, countdown: count })); }, []);
 
-  const reset = useCallback(() => {
-    setAudio(initialAudioState);
-    setRitual(initialRitualState);
-    try {
-      sessionStorage.removeItem('g4m3_sound_print');
-      sessionStorage.removeItem('g4m3_recording_data_url');
-      sessionStorage.removeItem('g4m3_filename');
-      sessionStorage.removeItem('g4m3_final_eq');
-      sessionStorage.removeItem('post-auth-redirect');
-    } catch { /* ignore */ }
+  const setPlaying = useCallback((playing: boolean) => {
+    setAudio(prev => ({ ...prev, isPlaying: playing }));
+  }, []);
+
+  const updateCurrentTime = useCallback((time: number) => {
+    setAudio(prev => ({ ...prev, currentTime: time }));
+  }, []);
+
+  const setRitualPhase = useCallback((phase: RitualState['phase']) => {
+    setRitual(prev => ({ ...prev, phase }));
+  }, []);
+
+  const setCountdown = useCallback((count: number) => {
+    setRitual(prev => ({ ...prev, countdown: count }));
   }, []);
 
   return (

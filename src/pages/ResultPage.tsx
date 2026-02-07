@@ -60,8 +60,22 @@ async function loadBlob(key: string): Promise<Blob | null> {
   }
 }
 
+async function deleteBlob(key: string): Promise<void> {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(key);
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
 const RECOVERY_BLOB_KEY = 'res_recovery_blob';
 const RECOVERY_PRINT_KEY = 'res_recovery_print';
+
+// ✅ must match AppContext
+const ALLOW_RECOVERY_KEY = 'g4m3_allow_recovery_v1';
 
 type ResultView = 'summary' | 'slots' | 'prize-0' | 'prize-3' | 'prize-6' | 'hub';
 
@@ -129,11 +143,8 @@ const ResultPage: React.FC = () => {
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [subscriptionTier, setSubscriptionTier] = useState<string | null>(null);
 
-  // ──────────────────────────────────────────────────────────────
-  // BLACK-SCREEN FIX: Auth stuck guard (prevents infinite spinner)
-  // ──────────────────────────────────────────────────────────────
+  // Auth stuck guard
   const [authStuckGuard, setAuthStuckGuard] = useState(false);
-
   useEffect(() => {
     const timer = setTimeout(() => {
       if (auth.isLoading) setAuthStuckGuard(true);
@@ -152,15 +163,49 @@ const ResultPage: React.FC = () => {
 
   const [streak, setStreak] = useState<StreakState>(defaultStreakState());
 
-  // 🚨 GLOBAL VIEW ENFORCER - UPDATED TO PREVENT JUMPING DURING DOWNLOAD
+  // ✅ Recovery: only restore if we are in an allowed flow
+  useEffect(() => {
+    const run = async () => {
+      const allow = sessionStorage.getItem(ALLOW_RECOVERY_KEY) === '1';
+
+      if (!allow) {
+        // Fresh visitor (or new tab) should NOT see any recovered artifacts.
+        try {
+          sessionStorage.removeItem(RECOVERY_PRINT_KEY);
+          await deleteBlob(RECOVERY_BLOB_KEY);
+        } catch {
+          // ignore
+        }
+        setRecoveredPrint(null);
+        setRecoveredBlob(null);
+        return;
+      }
+
+      try {
+        const savedPrint = sessionStorage.getItem(RECOVERY_PRINT_KEY);
+        if (savedPrint) setRecoveredPrint(savedPrint);
+
+        const blob = await loadBlob(RECOVERY_BLOB_KEY);
+        if (blob) setRecoveredBlob(blob);
+      } catch (e) {
+        console.warn('Recovery failed:', e);
+      } finally {
+        // ✅ One-shot: after we recovered once, require the app to explicitly allow again.
+        // This prevents someone arriving later from inheriting old state.
+        sessionStorage.removeItem(ALLOW_RECOVERY_KEY);
+      }
+    };
+
+    run();
+  }, []);
+
+  // 🚨 GLOBAL VIEW ENFORCER - keep it, but it will no longer be influenced by stale cross-user recovered data
   useEffect(() => {
     if (auth.user?.id) {
-      // If there is a recording session active, we don't force a view change.
-      // This allows the user to land on the summary screen and click download.
       const hasActiveSession = !!(state.recordingBlob || recoveredBlob);
-      
-      const shouldBeOnHub = 
-        (streak.subscriptionActive || isConfirmed || isFinalizing) && 
+
+      const shouldBeOnHub =
+        (streak.subscriptionActive || isConfirmed || isFinalizing) &&
         !hasActiveSession;
 
       if (shouldBeOnHub && view !== 'hub') {
@@ -168,84 +213,93 @@ const ResultPage: React.FC = () => {
         setView('hub');
       }
     }
-  }, [auth.user?.id, streak.subscriptionActive, isConfirmed, isFinalizing, view, state.recordingBlob, recoveredBlob]);
+  }, [
+    auth.user?.id,
+    streak.subscriptionActive,
+    isConfirmed,
+    isFinalizing,
+    view,
+    state.recordingBlob,
+    recoveredBlob,
+  ]);
 
-  // Fetch streak (runs when auth.user?.id changes)
-  const fetchStreak = useCallback(async (forceRefresh = false): Promise<StreakState | null> => {
-    if (!auth.user?.id) return null;
-    
-    if (!forceRefresh) {
-      setLoadingStreak(true);
-    }
-    
-    const today = new Date().toISOString().split('T')[0];
+  // Fetch streak
+  const fetchStreak = useCallback(
+    async (forceRefresh = false): Promise<StreakState | null> => {
+      if (!auth.user?.id) return null;
 
-    try {
-      let { data, error } = await supabase
-        .from('user_streaks')
-        .select('*')
-        .eq('user_id', auth.user.id)
-        .single();
+      if (!forceRefresh) setLoadingStreak(true);
 
-      if (error && (error as any).code === 'PGRST116') {
-        const { data: newData, error: insertError } = await supabase
+      const today = new Date().toISOString().split('T')[0];
+
+      try {
+        let { data, error } = await supabase
           .from('user_streaks')
-          .insert({
-            user_id: auth.user.id,
-            current_day: 1,
-            last_visit: today,
-            total_visits: 1,
-            subscription_tier: null,
-            subscription_status: null,
-            nft_claimed: false,
-          })
-          .select()
+          .select('*')
+          .eq('user_id', auth.user.id)
           .single();
-        if (insertError) throw insertError;
-        data = newData;
-      } else if (data) {
-        let newDay = data.current_day;
 
-        if (data.last_visit !== today) {
-          const lastVisitDate = new Date(data.last_visit);
-          const todayDate = new Date(today);
-          const timeDiff = todayDate.getTime() - lastVisitDate.getTime();
-          const diffDays = Math.floor(timeDiff / (1000 * 3600 * 24));
-
-          if (diffDays === 1) newDay = Math.min(data.current_day + 1, 6);
-          else if (diffDays > 1) newDay = 1;
-
-          await supabase
+        if (error && (error as any).code === 'PGRST116') {
+          const { data: newData, error: insertError } = await supabase
             .from('user_streaks')
-            .update({
-              current_day: newDay,
+            .insert({
+              user_id: auth.user.id,
+              current_day: 1,
               last_visit: today,
-              total_visits: data.total_visits + 1,
+              total_visits: 1,
+              subscription_tier: null,
+              subscription_status: null,
+              nft_claimed: false,
             })
-            .eq('user_id', auth.user.id);
+            .select()
+            .single();
+          if (insertError) throw insertError;
+          data = newData;
+        } else if (data) {
+          let newDay = data.current_day;
 
-          data.current_day = newDay;
+          if (data.last_visit !== today) {
+            const lastVisitDate = new Date(data.last_visit);
+            const todayDate = new Date(today);
+            const timeDiff = todayDate.getTime() - lastVisitDate.getTime();
+            const diffDays = Math.floor(timeDiff / (1000 * 3600 * 24));
+
+            if (diffDays === 1) newDay = Math.min(data.current_day + 1, 6);
+            else if (diffDays > 1) newDay = 1;
+
+            await supabase
+              .from('user_streaks')
+              .update({
+                current_day: newDay,
+                last_visit: today,
+                total_visits: data.total_visits + 1,
+              })
+              .eq('user_id', auth.user.id);
+
+            data.current_day = newDay;
+          }
         }
+
+        const next: StreakState = {
+          day: data?.current_day || 1,
+          lastDate: data?.last_visit || today,
+          nftClaimed: data?.nft_claimed || false,
+          subscriptionActive: data?.subscription_status === 'active',
+        };
+
+        setStreak(next);
+        return next;
+      } catch (err) {
+        console.error('Streak sync error:', err);
+        const safe = defaultStreakState();
+        setStreak(safe);
+        return null;
+      } finally {
+        setLoadingStreak(false);
       }
-
-      const next: StreakState = {
-        day: data?.current_day || 1,
-        lastDate: data?.last_visit || today,
-        nftClaimed: data?.nft_claimed || false,
-        subscriptionActive: data?.subscription_status === 'active',
-      };
-
-      setStreak(next);
-      return next;
-    } catch (err) {
-      console.error('Streak sync error:', err);
-      const safe = defaultStreakState();
-      setStreak(safe);
-      return null;
-    } finally {
-      setLoadingStreak(false);
-    }
-  }, [auth.user?.id, defaultStreakState]);
+    },
+    [auth.user?.id, defaultStreakState]
+  );
 
   const isLoggedIn = !!auth.user?.id;
 
@@ -267,7 +321,7 @@ const ResultPage: React.FC = () => {
     [trackEvent]
   );
 
-  // Handle Stripe return via URL params
+  // Stripe return via URL params
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const success = params.get('success') === 'true';
@@ -279,22 +333,22 @@ const ResultPage: React.FC = () => {
     if (canceled) {
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
       if (!isAuthRedirect) {
-        try { window.history.replaceState({}, '', '/result'); } catch {}
+        try {
+          window.history.replaceState({}, '', '/result');
+        } catch {}
       }
       setView('summary');
       return;
     }
 
     if (success) {
-      console.log("✅ Stripe success payment detected (via URL params)");
+      console.log('✅ Stripe success payment detected (via URL params)');
       sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
 
       setSubscriptionTier(tierLabel(tier) || 'unknown');
       setIsFinalizing(false);
-      
-      setStreak(prev => ({ ...prev, subscriptionActive: true }));
 
-      // Force confirmed state for subscribers
+      setStreak(prev => ({ ...prev, subscriptionActive: true }));
       setIsConfirmed(true);
 
       if (auth.user?.id) {
@@ -303,13 +357,15 @@ const ResultPage: React.FC = () => {
 
       if (!isAuthRedirect) {
         setTimeout(() => {
-          try { window.history.replaceState({}, '', '/result'); } catch {}
+          try {
+            window.history.replaceState({}, '', '/result');
+          } catch {}
         }, 500);
       }
     }
   }, [location.search, auth.user?.id, fetchStreak]);
 
-  // Robust Stripe-return path polling
+  // Stripe polling
   useEffect(() => {
     if (!auth.user?.id) return;
 
@@ -364,21 +420,6 @@ const ResultPage: React.FC = () => {
     };
   }, [auth.user?.id, fetchStreak]);
 
-  // Recover blobs
-  useEffect(() => {
-    const run = async () => {
-      try {
-        const savedPrint = sessionStorage.getItem(RECOVERY_PRINT_KEY);
-        if (savedPrint) setRecoveredPrint(savedPrint);
-        const blob = await loadBlob(RECOVERY_BLOB_KEY);
-        if (blob) setRecoveredBlob(blob);
-      } catch (e) {
-        console.warn("Recovery failed:", e);
-      }
-    };
-    run();
-  }, []);
-
   // Reveal timers
   useEffect(() => {
     if (view.startsWith('prize-')) {
@@ -418,15 +459,11 @@ const ResultPage: React.FC = () => {
     }
   }, [auth.user?.id, fetchStreak, defaultStreakState]);
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // ✅ FAIL-SAFE BANNER FIX: Always show banner if earned, ignore nftClaimed
-  // ──────────────────────────────────────────────────────────────────────────
+  // Banner fix (unchanged)
   useEffect(() => {
     if (auth.user?.id) {
       const hasEarnedArtifact = streak.subscriptionActive || streak.day >= 6;
-      if (hasEarnedArtifact) {
-        setIsConfirmed(true);
-      }
+      if (hasEarnedArtifact) setIsConfirmed(true);
     }
   }, [auth.user?.id, streak.subscriptionActive, streak.day]);
 
@@ -444,10 +481,13 @@ const ResultPage: React.FC = () => {
           console.warn(e);
         }
       }
-      
+
       if (ritual?.soundPrintDataUrl) {
         sessionStorage.setItem(RECOVERY_PRINT_KEY, ritual.soundPrintDataUrl);
       }
+
+      // ✅ allow recovery exactly for this login redirect
+      sessionStorage.setItem(ALLOW_RECOVERY_KEY, '1');
 
       if (provider === 'discord') await signInWithDiscord();
       else await signInWithGoogle();
@@ -479,16 +519,10 @@ const ResultPage: React.FC = () => {
     try {
       const result = await claimRitualArtifact(auth.user.id);
 
-      // Only update DB if claim call reports success (strong guarantee)
       if (result?.success) {
-        await supabase
-          .from('user_streaks')
-          .update({ nft_claimed: true })
-          .eq('user_id', auth.user.id);
-
+        await supabase.from('user_streaks').update({ nft_claimed: true }).eq('user_id', auth.user.id);
         setStreak(prev => ({ ...prev, nftClaimed: true }));
-        // Note: we leave isConfirmed as true now per your request to keep banner always visible
-        
+
         trackEvent('nft_claimed', { day: streak.day, isSubscriber: streak.subscriptionActive });
 
         if (result.claimUrl) {
@@ -549,31 +583,39 @@ const ResultPage: React.FC = () => {
   );
 
   const goHome = useCallback(() => {
+    // ✅ clear recovery artifacts when leaving
+    try {
+      sessionStorage.removeItem(RECOVERY_PRINT_KEY);
+      sessionStorage.removeItem(ALLOW_RECOVERY_KEY);
+      deleteBlob(RECOVERY_BLOB_KEY).catch(() => {});
+    } catch {}
+
     reset();
     navigate('/');
   }, [navigate, reset]);
 
   const handleSignOut = useCallback(async () => {
     sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+
+    // ✅ clear recovery artifacts on sign out
+    try {
+      sessionStorage.removeItem(RECOVERY_PRINT_KEY);
+      sessionStorage.removeItem(ALLOW_RECOVERY_KEY);
+      deleteBlob(RECOVERY_BLOB_KEY).catch(() => {});
+    } catch {}
+
     await signOut();
     navigate('/');
   }, [navigate, signOut]);
 
-  // ✅ FAIL-SAFE TEXT: Always high energy if earned
   const dayText = useMemo(() => {
     if (loadingStreak) return 'ALIGNING PLANETARY GEARS...';
-    
-    if (streak.subscriptionActive) {
-      return 'SUBSCRIPTION ACTIVE • CLAIM YOUR MONTHLY ARTIFACT BELOW.';
-    }
 
-    if (view !== 'prize-0') {
-      return "";
-    }
+    if (streak.subscriptionActive) return 'SUBSCRIPTION ACTIVE • CLAIM YOUR MONTHLY ARTIFACT BELOW.';
 
-    if (streak.day >= 6) {
-      return 'DAY 6 OF 6: THE GATE IS OPEN.';
-    }
+    if (view !== 'prize-0') return '';
+
+    if (streak.day >= 6) return 'DAY 6 OF 6: THE GATE IS OPEN.';
 
     return `DAY ${streak.day} OF 6: RETURN TOMORROW TO STRENGTHEN THE SIGNAL.`;
   }, [streak, loadingStreak, view]);
@@ -581,10 +623,7 @@ const ResultPage: React.FC = () => {
   const renderPrizeScreen = (tier: '6' | '3' | '0') => {
     const imgSrc = tier === '6' ? prize6 : tier === '3' ? prize3 : prize0;
 
-    // Show button if earned, regardless of "nftClaimed" to avoid hard-fails
-    const showClaimBtn =
-      tier === '0' && (streak.day >= 6 || streak.subscriptionActive);
-
+    const showClaimBtn = tier === '0' && (streak.day >= 6 || streak.subscriptionActive);
     const textData = tier === '6' ? PRIZE_TEXTS[6] : tier === '3' ? PRIZE_TEXTS[3] : null;
 
     const handleClick = () => {
@@ -596,18 +635,12 @@ const ResultPage: React.FC = () => {
     };
 
     return (
-      <div
-        className="res-page-root"
-        onClick={handleClick}
-        style={{ cursor: canProceed && !showClaimBtn ? 'pointer' : 'default' }}
-      >
+      <div className="res-page-root" onClick={handleClick} style={{ cursor: canProceed && !showClaimBtn ? 'pointer' : 'default' }}>
         <div className="res-machine-container">
           <img src={imgSrc} className="res-background-image" alt="Prize" />
-          
-          {tier === '0' && dayText && (
-            <div className="prize-shelf-text legacy">{dayText}</div>
-          )}
-          
+
+          {tier === '0' && dayText && <div className="prize-shelf-text legacy">{dayText}</div>}
+
           {textData && (
             <div className="prize-shelf-text sacred-text-container">
               <h2 className="sacred-title">{textData.title}</h2>
@@ -654,9 +687,7 @@ const ResultPage: React.FC = () => {
             </div>
           )}
 
-          {canProceed && !showClaimBtn && !textData && (
-            <div className="tap-continue-hint">Tap to continue</div>
-          )}
+          {canProceed && !showClaimBtn && !textData && <div className="tap-continue-hint">Tap to continue</div>}
         </div>
       </div>
     );
@@ -670,27 +701,19 @@ const ResultPage: React.FC = () => {
     );
   }
 
-  // HUB VIEW
   if (view === 'hub') {
-    // Big button always shows if earned now
-    const showHubClaimButton = (streak.day >= 6 || streak.subscriptionActive || isConfirmed);
+    const showHubClaimButton = streak.day >= 6 || streak.subscriptionActive || isConfirmed;
 
     return (
       <div className={`res-page-root ${isConfirmed ? 'confirmed-state' : ''}`}>
         <div className="res-machine-container">
           <img src={steamSlotsHub} className="res-background-image" alt="Steam Slots Hub" />
 
-          {dayText && (
-            <div className="prize-shelf-text legacy">{dayText}</div>
-          )}
+          {dayText && <div className="prize-shelf-text legacy">{dayText}</div>}
 
           {showHubClaimButton && (
             <div className="hub-claim-overlay">
-              <button
-                className="manifold-claim-btn hub-btn"
-                onClick={handleClaim}
-                disabled={claiming}
-              >
+              <button className="manifold-claim-btn hub-btn" onClick={handleClaim} disabled={claiming}>
                 {claiming ? 'OPENING PORTAL...' : 'CLAIM YOUR MONTHLY ARTIFACT'}
               </button>
             </div>
@@ -720,33 +743,21 @@ const ResultPage: React.FC = () => {
                 <button
                   className="hs hs-hub-left"
                   onClick={() =>
-                    window.open(
-                      'https://manifold.xyz/@r41nb0w/id/4078311664',
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
+                    window.open('https://manifold.xyz/@r41nb0w/id/4078311664', '_blank', 'noopener,noreferrer')
                   }
                   aria-label="001"
                 />
                 <button
                   className="hs hs-hub-center"
                   onClick={() =>
-                    window.open(
-                      'https://manifold.xyz/@r41nb0w/id/4078321904',
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
+                    window.open('https://manifold.xyz/@r41nb0w/id/4078321904', '_blank', 'noopener,noreferrer')
                   }
                   aria-label="002"
                 />
                 <button
                   className="hs hs-hub-right"
                   onClick={() =>
-                    window.open(
-                      'https://manifold.xyz/@r41nb0w/id/4078434544',
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
+                    window.open('https://manifold.xyz/@r41nb0w/id/4078434544', '_blank', 'noopener,noreferrer')
                   }
                   aria-label="003"
                 />
